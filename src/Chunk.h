@@ -2,6 +2,7 @@
 #include"raylib.h"
 #include<cstdint>
 #include"raymath.h"
+#include"BlockTypes.h"
 
 
 const int CHUNK_WIDTH = 16;

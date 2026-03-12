@@ -42,7 +42,14 @@ void Chunk::Fill(int worldX, int worldZ)
 
 			for (int y = 0; y < CHUNK_HEIGHT; y++)
 			{
-				blocks[x][y][z] = (y <= height) ? 1 : 0;
+				if (y > height)
+					blocks[x][y][z] = BLOCK_AIR;
+				else if (y == height)
+					blocks[x][y][z] = BLOCK_GRASS;
+				else if (y >= height - 3)
+					blocks[x][y][z] = BLOCK_DIRT;
+				else
+					blocks[x][y][z] = BLOCK_STONE;
 			}
 		}
 	}
@@ -54,12 +61,13 @@ void Chunk::BuildMesh()
 {
 	std::vector<float> vertices;
 	std::vector<float> normals;
+	std::vector<unsigned char> colors;
 	std::vector<unsigned short> indices;
 
 	unsigned short index = 0;
 
 	auto addFace = [&]
-	(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal)
+	(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal, Color color)
 	{
 		// triangle 1
 		vertices.insert(vertices.end(), { a.x, a.y, a.z });
@@ -71,7 +79,10 @@ void Chunk::BuildMesh()
 		vertices.insert(vertices.end(), { d.x, d.y, d.z });
 
 		for (int i = 0; i < 6; i++) // find normals of each face
+		{
 			normals.insert(normals.end(), { normal.x, normal.y, normal.z });
+			colors.insert(colors.end(), {color.r, color.g, color.b, color.a});
+		}
 
 		indices.insert
 			(indices.end(),
@@ -93,28 +104,30 @@ void Chunk::BuildMesh()
 			{
 				if (blocks[x][y][z] == 0) { continue; }
 
+				Color color = GetBlockColor((BlockType)blocks[x][y][z]);
+
 				float x0 = x, x1 = x + 1;
 				float y0 = y, y1 = y + 1;
 				float z0 = z, z1 = z + 1;
 
 				// top
 				if (IsAir(x, y + 1, z))
-					addFace({x0, y1, z1}, {x1, y1, z1}, {x1, y1, z0}, {x0, y1, z0}, {0, 1, 0});
+					addFace({x0, y1, z1}, {x1, y1, z1}, {x1, y1, z0}, {x0, y1, z0}, {0, 1, 0}, color);
 				// bottom
 				if (IsAir(x, y - 1, z))
-					addFace({ x0, y0, z1 }, { x1, y0, z1 }, { x1, y0, z0 }, { x0, y0, z0 }, { 0, -1, 0 });
+					addFace({ x0, y0, z1 }, { x1, y0, z1 }, { x1, y0, z0 }, { x0, y0, z0 }, { 0, -1, 0 }, color);
 				// front
 				if (IsAir(x, y, z + 1))
-					addFace({ x0, y0, z1 }, { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 }, { 0, 0, 1 });
+					addFace({ x0, y0, z1 }, { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 }, { 0, 0, 1 }, color);
 				// back
 				if (IsAir(x, y, z - 1))
-					addFace({ x1, y0, z0 }, { x0, y0, z0 }, { x0, y1, z0 }, { x1, y1, z0 }, { 0, 0, -1 });
+					addFace({ x1, y0, z0 }, { x0, y0, z0 }, { x0, y1, z0 }, { x1, y1, z0 }, { 0, 0, -1 }, color);
 				// right
 				if (IsAir(x + 1, y, z))
-					addFace({ x1, y0, z1 }, { x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { 1, 0, 0 });
+					addFace({ x1, y0, z1 }, { x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { 1, 0, 0 }, color);
 				// left
 				if (IsAir(x - 1, y, z))
-					addFace({ x0, y0, z0 }, { x0, y0, z1 }, { x0, y1, z1 }, { x0, y1, z0 }, { -1, 0, 0 });
+					addFace({ x0, y0, z0 }, { x0, y0, z1 }, { x0, y1, z1 }, { x0, y1, z0 }, { -1, 0, 0 }, color);
 			}
 		}
 	}
@@ -127,10 +140,12 @@ void Chunk::BuildMesh()
 
 	mesh.vertices = (float*)MemAlloc(vertices.size() * sizeof(float));
 	mesh.normals = (float*)MemAlloc(normals.size() * sizeof(float));
+	mesh.colors = (unsigned char*)MemAlloc(colors.size() * sizeof(unsigned char));
 	mesh.indices = (unsigned short*)MemAlloc(indices.size() * sizeof(unsigned short));
 
 	memcpy(mesh.vertices, vertices.data(), vertices.size() * sizeof(float));
 	memcpy(mesh.normals, normals.data(), normals.size() * sizeof(float));
+	memcpy(mesh.colors, colors.data(), colors.size() * sizeof(unsigned char));
 	memcpy(mesh.indices, indices.data(), indices.size() * sizeof(unsigned short));
 
 	UploadMesh(&mesh, false);
@@ -144,7 +159,6 @@ void Chunk::Draw(Vector3 position)
 	if (mesh.vertexCount == 0) { return; }
 
 	Material mat = LoadMaterialDefault();
-	mat.maps[MATERIAL_MAP_DIFFUSE].color = RED;
 	DrawMesh(mesh, mat, MatrixTranslate(position.x, position.y, position.z));
 	UnloadMaterial(mat);
 }
