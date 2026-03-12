@@ -1,8 +1,13 @@
 #include"Chunk.h"
 #include"external/stb_perlin.h"
+#include<vector>
+
 
 Chunk::Chunk()
 {
+	meshDirty = true;
+	mesh = {};
+
 	// initialize all blocks to air
 	for (int x = 0; x < CHUNK_WIDTH; x++)
 	{
@@ -16,13 +21,23 @@ Chunk::Chunk()
 	}
 }
 
-void Chunk::Fill()
+bool Chunk::IsAir(int x, int y, int z)
+{
+	if (x < 0 || x >= CHUNK_WIDTH) return true;
+	if (y < 0 || x >= CHUNK_HEIGHT) return true;
+	if (z < 0 || z >= CHUNK_DEPTH) return true;
+	return blocks[x][y][z] == 0;
+}
+
+void Chunk::Fill(int worldX, int worldZ)
 {
 	for (int x = 0; x < CHUNK_WIDTH; x++)
 	{
 		for (int z = 0; z < CHUNK_DEPTH; z++)
 		{
-			float noise = stb_perlin_noise3(x * 0.1f, 0, z * 0.1f, 0, 0, 0);
+			float nx = (worldX * CHUNK_WIDTH + x) * 0.1f;
+			float nz = (worldZ * CHUNK_DEPTH + z) * 0.1f;
+			float noise = stb_perlin_noise3(nx, 0, nz, 0, 0, 0);
 			int height = (int)((noise + 1.f) * 0.5f * 8) + 4;
 
 			for (int y = 0; y < CHUNK_HEIGHT; y++)
@@ -31,10 +46,45 @@ void Chunk::Fill()
 			}
 		}
 	}
+
+	meshDirty = true;
 }
 
-void Chunk::Draw()
+void Chunk::BuildMesh()
 {
+	std::vector<float> vertices;
+	std::vector<float> normals;
+	std::vector<unsigned short> indices;
+
+	unsigned short index = 0;
+
+	auto addFace = [&]
+	(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal)
+	{
+		// triangle 1
+		vertices.insert(vertices.end(), { a.x, a.y, a.z });
+		vertices.insert(vertices.end(), { b.x, b.y, b.z });
+		vertices.insert(vertices.end(), { c.x, c.y, c.z });
+		// triangle 2
+		vertices.insert(vertices.end(), { a.x, a.y, a.z });
+		vertices.insert(vertices.end(), { c.x, c.y, c.z });
+		vertices.insert(vertices.end(), { d.x, d.y, d.z });
+
+		for (int i = 0; i < 6; i++) // find normals of each face
+			normals.insert(normals.end(), { normal.x, normal.y, normal.z });
+
+		indices.insert
+			(indices.end(),
+				{ index,
+				(unsigned short)(index + 1),
+				(unsigned short)(index + 2),
+				(unsigned short)(index + 3),
+				(unsigned short)(index + 4),
+				(unsigned short)(index + 5) }
+			);
+		index += 6;
+	};
+
 	for (int x = 0; x < CHUNK_WIDTH; x++)
 	{
 		for (int y = 0; y < CHUNK_HEIGHT; y++)
@@ -43,9 +93,58 @@ void Chunk::Draw()
 			{
 				if (blocks[x][y][z] == 0) { continue; }
 
-				DrawCube({ x + 0.5f, y + 0.5f, z + 0.5f }, 1.f, 1.f, 1.f, GREEN);
-				DrawCubeWires({ x + 0.5f, y + 0.5f, z + 0.5f }, 1.f, 1.f, 1.f, DARKGREEN);
+				float x0 = x, x1 = x + 1;
+				float y0 = y, y1 = y + 1;
+				float z0 = z, z1 = z + 1;
+
+				// top
+				if (IsAir(x, y + 1, z))
+					addFace({x0, y1, z1}, {x1, y1, z1}, {x1, y1, z0}, {x0, y1, z0}, {0, 1, 0});
+				// bottom
+				if (IsAir(x, y - 1, z))
+					addFace({ x0, y0, z1 }, { x1, y0, z1 }, { x1, y0, z0 }, { x0, y0, z0 }, { 0, -1, 0 });
+				// front
+				if (IsAir(x, y, z + 1))
+					addFace({ x0, y0, z1 }, { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 }, { 0, 0, 1 });
+				// back
+				if (IsAir(x, y, z - 1))
+					addFace({ x1, y0, z0 }, { x0, y0, z0 }, { x0, y1, z0 }, { x1, y1, z0 }, { 0, 0, -1 });
+				// right
+				if (IsAir(x + 1, y, z))
+					addFace({ x1, y0, z1 }, { x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { 1, 0, 0 });
+				// left
+				if (IsAir(x - 1, y, z))
+					addFace({ x0, y0, z0 }, { x0, y0, z1 }, { x0, y1, z1 }, { x0, y1, z0 }, { -1, 0, 0 });
 			}
 		}
 	}
+
+	if (mesh.vboId != nullptr) { UnloadMesh(mesh); }
+
+	mesh = {};
+	mesh.triangleCount = vertices.size() / 9;
+	mesh.vertexCount = vertices.size() / 3;
+
+	mesh.vertices = (float*)MemAlloc(vertices.size() * sizeof(float));
+	mesh.normals = (float*)MemAlloc(normals.size() * sizeof(float));
+	mesh.indices = (unsigned short*)MemAlloc(indices.size() * sizeof(unsigned short));
+
+	memcpy(mesh.vertices, vertices.data(), vertices.size() * sizeof(float));
+	memcpy(mesh.normals, normals.data(), normals.size() * sizeof(float));
+	memcpy(mesh.indices, indices.data(), indices.size() * sizeof(unsigned short));
+
+	UploadMesh(&mesh, false);
+	meshDirty = false;
+}
+
+
+void Chunk::Draw(Vector3 position)
+{
+	if (meshDirty) { BuildMesh(); }
+	if (mesh.vertexCount == 0) { return; }
+
+	Material mat = LoadMaterialDefault();
+	mat.maps[MATERIAL_MAP_DIFFUSE].color = RED;
+	DrawMesh(mesh, mat, MatrixTranslate(position.x, position.y, position.z));
+	UnloadMaterial(mat);
 }
