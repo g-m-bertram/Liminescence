@@ -1,5 +1,7 @@
 ﻿#include "Liminescence.h"
 #include"raylib.h"
+#include"Chunk.h"
+
 
 int main()
 {
@@ -15,6 +17,9 @@ int main()
 
     DisableCursor();
 
+    Chunk chunk;
+    chunk.Fill();
+
     while (!WindowShouldClose())
     {
         UpdateCamera(&camera, CAMERA_FREE);
@@ -25,6 +30,7 @@ int main()
 
         BeginMode3D(camera);
         DrawGrid(20, 1.f);
+        chunk.Draw();
         EndMode3D();
 
         DrawText("WASD to move, mouse to look", 10, 10, 20, BLACK);

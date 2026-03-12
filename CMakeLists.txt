@@ -23,7 +23,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(raylib)
 
 # Add source to this project's executable.
-add_executable (Liminescence "src/main.cpp" "src/Liminescence.h")
+add_executable (Liminescence "src/main.cpp" "src/Liminescence.h" "src/Chunk.h" "src/Chunk.cpp")
 
 # Link raylib to your project
 target_link_libraries(Liminescence PRIVATE raylib)
