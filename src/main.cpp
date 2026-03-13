@@ -16,6 +16,7 @@ int main()
 
     while (!WindowShouldClose())
     {
+        world.Update(player.position);
         player.Update(world);
 
         BeginDrawing();
@@ -27,7 +28,13 @@ int main()
             world.Draw();
         EndMode3D();
 
+        int cx = GetScreenWidth() / 2;
+        int cy = GetScreenHeight() / 2;
+        DrawLine(cx - 10, cy, cx + 10, cy, WHITE);
+        DrawLine(cx, cy - 10, cx, cy + 10, WHITE);
+
         DrawText("WASD to move, mouse to look", 10, 10, 20, BLACK);
+        DrawText(TextFormat("FPS: %d", GetFPS()), 10, 40, 20, BLACK);
 
         EndDrawing();
     }
