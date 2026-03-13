@@ -75,3 +75,61 @@ uint8_t World::GetBlock(int x, int y, int z)
 
 	return it->second->blocks[lx][y][lz];
 }
+
+RaycastResult World::Raycast(Vector3 origin, Vector3 direction, float maxDistance)
+{
+	RaycastResult result = {};
+	result.hit = false;
+
+	direction = Vector3Normalize(direction);
+
+	float stepSize = 0.05f;
+	Vector3 pos = origin;
+
+	int lastAirX = 0, lastAirY = 0, lastAirZ = 0;
+
+	for (float dist = 0; dist < maxDistance; dist += stepSize)
+	{
+		pos = Vector3Add(origin, Vector3Scale(direction, dist));
+
+		int bx = (int)floor(pos.x);
+		int by = (int)floor(pos.y);
+		int bz = (int)floor(pos.z);
+
+		uint8_t block = GetBlock(bx, by, bz);
+
+		if (block != BLOCK_AIR)
+		{
+			result.hit = true;
+			result.x = bx;
+			result.y = by;
+			result.z = bz;
+			result.nx = lastAirX;
+			result.ny = lastAirY;
+			result.nz = lastAirZ;
+			return result;
+		}
+
+		lastAirX = bx;
+		lastAirY = by;
+		lastAirZ = bz;
+	}
+
+	return result;
+}
+
+void World::SetBlock(int x, int y, int z, uint8_t block)
+{
+	int chunkX = (int)floor((float)x / CHUNK_WIDTH);
+	int chunkZ = (int)floor((float)z / CHUNK_DEPTH);
+
+	auto it = chunks.find({ chunkX, chunkZ });
+	if (it == chunks.end()) { return; }
+	if (y < 0 || y >= CHUNK_HEIGHT) { return; }
+
+	int lx = x - chunkX * CHUNK_WIDTH;
+	int lz = z - chunkZ * CHUNK_DEPTH;
+
+	it->second->blocks[lx][y][lz] = block;
+	it->second->meshDirty = true;
+}

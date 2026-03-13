@@ -31,6 +31,13 @@ struct ChunkCoordHash
 	}
 };
 
+struct RaycastResult
+{
+	bool hit;
+	int x, y, z;	// block that was hit
+	int nx, ny, nz; // last air block before hit
+};
+
 
 class World
 {
@@ -45,6 +52,9 @@ public:
 	void Update(Vector3 playerPos);
 	void Draw();
 	uint8_t GetBlock(int x, int y, int z);
+
+	RaycastResult Raycast(Vector3 origin, Vector3 direction, float maxDistance);
+	void SetBlock(int x, int y, int z, uint8_t block);
 
 private:
 	void LoadChunk(int cx, int cz);
