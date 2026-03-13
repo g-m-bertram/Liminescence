@@ -27,3 +27,22 @@ void World::Draw()
 		}
 	}
 }
+
+uint8_t World::GetBlock(int x, int y, int z)
+{
+	// figure out which chunk the coord is in
+	int chunkX = x / CHUNK_WIDTH;
+	int chunkZ = z / CHUNK_DEPTH;
+
+	// out of world bounds
+	if (chunkX < 0 || chunkX >= WORLD_WIDTH) { return BLOCK_STONE; }
+	if (chunkZ < 0 || chunkZ >= WORLD_DEPTH) { return BLOCK_STONE; }
+	if (y < 0)								 { return BLOCK_STONE; }
+	if (y >= CHUNK_HEIGHT)					 { return BLOCK_AIR; }
+
+	// local coords in chunk
+	int lx = x % CHUNK_WIDTH;
+	int lz = z % CHUNK_DEPTH;
+
+	return chunks[chunkX][chunkZ].blocks[lx][y][lz];
+}

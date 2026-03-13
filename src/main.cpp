@@ -1,34 +1,29 @@
 ﻿#include "Liminescence.h"
 #include"raylib.h"
 #include"World.h"
+#include"Player.h"
 
 
 int main()
 {
     InitWindow(800, 600, "Liminescence");
     SetTargetFPS(60);
-
-    Camera3D camera = {};
-    camera.position = { 0.f, 5.f, 10.f };
-    camera.target = { 0.f, 0.f, 0.f };
-    camera.up = { 0.f, 1.f, 0.f };
-    camera.fovy = 70.f;
-    camera.projection = CAMERA_PERSPECTIVE;
-
     DisableCursor();
 
     World world;
+    Player player({ 8.f, 40.f, 8.f });
+    player.camera.target = { 9.f, 40.f, 8.f };
 
     while (!WindowShouldClose())
     {
-        UpdateCamera(&camera, CAMERA_FREE);
+        player.Update(world);
 
         BeginDrawing();
 
         ClearBackground(SKYBLUE);
 
-        BeginMode3D(camera);
-            DrawGrid(20, 1.f);
+        BeginMode3D(player.camera);
+            DrawGrid(64.f, 1.f);
             world.Draw();
         EndMode3D();
 
