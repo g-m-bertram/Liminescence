@@ -4,22 +4,74 @@
 
 World::World()
 {
-	
+	running = true;
+	genThread = std::thread(&World::ChunkGenThread, this);
 }
 
+World::~World()
+{
+	running = false;
+	if (genThread.joinable())
+		genThread.join();
+}
+
+void World::ChunkGenThread()
+{
+	while (running)
+	{
+		ChunkCoord coord;
+		bool hasWork = false;
+
+		{
+			std::lock_guard<std::mutex> lock(loadQueueMutex);
+			if (!loadQueue.empty())
+			{
+				coord = loadQueue.front();
+				loadQueue.pop();
+				hasWork = true;
+			}
+		}
+
+		if (!hasWork)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			continue;
+		}
+
+		// check if already loaded
+		{
+			std::lock_guard<std::mutex> lock(chunksMutex);
+			if (chunks.find(coord) != chunks.end()) { continue; }
+		}
+
+		// generate chunk data and build mesh data on background thread
+		auto chunk = std::make_unique<Chunk>();
+		chunk->Fill(coord.x, coord.z);
+		chunk->BuildMeshData();
+
+		{
+			std::lock_guard<std::mutex> lock(readyQueueMutex);
+			readyQueue.push({coord, std::move(chunk)});
+		}
+	}
+}
 
 void World::LoadChunk(int cx, int cz)
 {
 	ChunkCoord coord = { cx, cz };
-	if (chunks.find(coord) != chunks.end()) { return; } // already loaded
+	
+	{
+		std::lock_guard<std::mutex> lock(chunksMutex);
+		if (chunks.find(coord) != chunks.end()) { return; }
+	}
 
-	auto chunk = std::make_unique<Chunk>();
-	chunk->Fill(cx, cz);
-	chunks[coord] = std::move(chunk);
+	std::lock_guard<std::mutex> lock(loadQueueMutex);
+	loadQueue.push(coord);
 }
 
 void World::UnloadChunk(int cx, int cz)
 {
+	std::lock_guard<std::mutex> lock(chunksMutex);
 	chunks.erase({ cx, cz });
 }
 
@@ -33,23 +85,44 @@ void World::Update(Vector3 playerPos)
 		for (int z = playerChunkZ - VIEW_DISTANCE; z <= playerChunkZ + VIEW_DISTANCE; z++)
 			LoadChunk(x, z);
 
+	// upload ready chunks on main thread
+	{
+		std::lock_guard<std::mutex> lock(readyQueueMutex);
+		while (!readyQueue.empty())
+		{
+			auto& [coord, chunk] = readyQueue.front();
+
+			// re-upload mesh on main thread
+			chunk->UploadMeshData();
+
+			std::lock_guard<std::mutex> chunksLock(chunksMutex);
+			chunks[coord] = std::move(chunk);
+			readyQueue.pop();
+		}
+	}
+
 	// unload chunks outside view distance
 	std::vector<ChunkCoord> toUnload;
-	for (auto& pair : chunks)
 	{
-		int dx = abs(pair.first.x - playerChunkX);
-		int dz = abs(pair.first.z - playerChunkZ);
-		if (dx > VIEW_DISTANCE || dz > VIEW_DISTANCE)
-			toUnload.push_back(pair.first);
+		std::lock_guard<std::mutex> lock(chunksMutex);
+		for (auto& pair : chunks)
+		{
+			int dx = abs(pair.first.x - playerChunkX);
+			int dz = abs(pair.first.z - playerChunkZ);
+			if (dx > VIEW_DISTANCE || dz > VIEW_DISTANCE)
+				toUnload.push_back(pair.first);
+		}
 	}
+
 	for (auto& coord : toUnload)
-		chunks.erase(coord);
+		UnloadChunk(coord.x, coord.z);
 }
 
 void World::Draw()
 {
 	for (auto& pair : chunks)
 	{
+		std::lock_guard<std::mutex> lock(chunksMutex);
 		pair.second->Draw({
 			(float)(pair.first.x * CHUNK_WIDTH),
 			0.0f,
@@ -123,6 +196,7 @@ void World::SetBlock(int x, int y, int z, uint8_t block)
 	int chunkX = (int)floor((float)x / CHUNK_WIDTH);
 	int chunkZ = (int)floor((float)z / CHUNK_DEPTH);
 
+	std::lock_guard<std::mutex> lock(chunksMutex);
 	auto it = chunks.find({ chunkX, chunkZ });
 	if (it == chunks.end()) { return; }
 	if (y < 0 || y >= CHUNK_HEIGHT) { return; }
@@ -131,5 +205,5 @@ void World::SetBlock(int x, int y, int z, uint8_t block)
 	int lz = z - chunkZ * CHUNK_DEPTH;
 
 	it->second->blocks[lx][y][lz] = block;
-	it->second->meshDirty = true;
+	it->second->BuildMesh();
 }

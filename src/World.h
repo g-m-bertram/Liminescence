@@ -2,7 +2,16 @@
 #include<stdint.h>
 #include<unordered_map>
 #include<memory>
+#include<thread>
+#include<mutex>
+#include<queue>
 #include"Chunk.h"
+
+/*
+mutex is a synchronization primitive in C++ used to protect shared data 
+from being simultaneously accessed by multiple threads. It ensures 
+that only one thread can access a critical section of code at a time
+*/
 
 
 const int VIEW_DISTANCE = 4;
@@ -49,6 +58,7 @@ public:
 	std::unordered_map<ChunkCoord, std::unique_ptr<Chunk>, ChunkCoordHash> chunks;
 
 	World();
+	~World();
 	void Update(Vector3 playerPos);
 	void Draw();
 	uint8_t GetBlock(int x, int y, int z);
@@ -59,5 +69,16 @@ public:
 private:
 	void LoadChunk(int cx, int cz);
 	void UnloadChunk(int cx, int cz);
+	void ChunkGenThread();
 
+	std::thread genThread;
+	std::mutex chunksMutex;
+
+	std::queue<ChunkCoord> loadQueue;
+	std::mutex loadQueueMutex;
+
+	std::queue<std::pair<ChunkCoord, std::unique_ptr<Chunk>>> readyQueue;
+	std::mutex readyQueueMutex;
+
+	bool running;
 };

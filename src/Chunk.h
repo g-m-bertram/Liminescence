@@ -22,6 +22,8 @@ public:
 	Chunk();
 	void Fill(int worldX, int worldZ);
 	void BuildMesh();
+	void BuildMeshData();	// safe to call on background thread
+	void UploadMeshData();	// must be called on main thread
 	void Draw(Vector3 position);
 
 private:
