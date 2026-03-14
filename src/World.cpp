@@ -27,15 +27,20 @@ World::World() : loadQueue([this](const ChunkCoord& a, const ChunkCoord& b)
 	SetShaderValue(fogShader, fogEndLoc,	&fogEnd,	SHADER_UNIFORM_FLOAT);
 	chunkMaterial.shader = fogShader;
 
-	genThread = std::thread(&World::ChunkGenThread, this);
+	int threadCount = 1;
+	//int threadCount = std::thread::hardware_concurrency();
+	//threadCount = std::max(1, (int)threadCount - 1); // leave one core for main thread
+	for (int i = 0; i < threadCount; i++)
+		genThreads.emplace_back(&World::ChunkGenThread, this);
 }
 
 World::~World()
 {
-	// stop thread first
+	// stop threads first
 	running = false;
-	if (genThread.joinable())
-		genThread.join();
+	for (auto& t : genThreads)
+		if (t.joinable())
+			t.join();
 
 	// clear queues
 	{
@@ -138,17 +143,19 @@ void World::Update(Vector3 playerPos)
 	// upload ready chunks on main thread
 	{
 		std::lock_guard<std::mutex> lock(readyQueueMutex);
-		while (!readyQueue.empty())
+		int uploadsThisFrame = 0;
+		while (!readyQueue.empty() && uploadsThisFrame < 2)
 		{
 			auto& [coord, chunk] = readyQueue.front();
 
+			chunk->UploadMeshData();
 			// re-upload mesh on main thread
 			{
 				std::lock_guard<std::mutex> chunksLock(chunksMutex);
 				chunks[coord] = std::move(chunk);
 
 				// rebuild neighbors so their edges reflect the new chunk
-				auto rebuildNeighbor = [&](int nx, int nz)
+				/*auto rebuildNeighbor = [&](int nx, int nz)
 				{
 					auto n = chunks.find({ nx, nz });
 					if (n != chunks.end())
@@ -162,9 +169,9 @@ void World::Update(Vector3 playerPos)
 				rebuildNeighbor(coord.x - 1, coord.z);
 				rebuildNeighbor(coord.x + 1, coord.z);
 				rebuildNeighbor(coord.x, coord.z - 1);
-				rebuildNeighbor(coord.x, coord.z + 1);
+				rebuildNeighbor(coord.x, coord.z + 1);*/
 			}
-
+			uploadsThisFrame++;
 			readyQueue.pop();
 		}
 	}
@@ -296,10 +303,10 @@ void World::SetBlock(int x, int y, int z, uint8_t block)
 			}
 		};
 
-		if (lx == 0) { rebuildNeighbor(chunkX - 1, chunkZ); }
-		if (lx == CHUNK_WIDTH - 1) { rebuildNeighbor(chunkX + 1, chunkZ); }
-		if (lz == 0) { rebuildNeighbor(chunkX, chunkZ - 1); }
-		if (lz == CHUNK_DEPTH - 1) { rebuildNeighbor(chunkX, chunkZ + 1); }
+		if (lx == 0)				{ rebuildNeighbor(chunkX - 1, chunkZ); }
+		if (lx == CHUNK_WIDTH - 1)	{ rebuildNeighbor(chunkX + 1, chunkZ); }
+		if (lz == 0)				{ rebuildNeighbor(chunkX, chunkZ - 1); }
+		if (lz == CHUNK_DEPTH - 1)	{ rebuildNeighbor(chunkX, chunkZ + 1); }
 	}
 }
 

@@ -6,6 +6,7 @@
 #include<mutex>
 #include<queue>
 #include<functional>
+#include<unordered_set>
 #include"Chunk.h"
 
 /*
@@ -78,7 +79,7 @@ private:
 
 	Material chunkMaterial;
 
-	std::thread genThread;
+	std::vector<std::thread> genThreads;
 	std::mutex chunksMutex;
 
 	std::priority_queue<
@@ -91,6 +92,10 @@ private:
 
 	std::queue<std::pair<ChunkCoord, std::unique_ptr<Chunk>>> readyQueue;
 	std::mutex readyQueueMutex;
+
+	//std::unordered_set<ChunkCoord, ChunkCoordHash> rebuildQueue;
+	//std::mutex rebuildQueueMutex;
+	//void QueueNeighborRebuilds(int chunkX, int chunkZ);
 
 	bool running;
 

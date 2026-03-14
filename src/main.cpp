@@ -54,6 +54,7 @@ int main()
             // hud info
             DrawText("WASD to move, mouse to look", 10, 10, 20, BLACK);
             DrawText(TextFormat("FPS: %d", GetFPS()), 10, 40, 20, BLACK);
+            DrawText(TextFormat("Chunks: % d", (int)world.chunks.size()), 10, 70, 20, BLACK);
 
             EndDrawing();
         }
