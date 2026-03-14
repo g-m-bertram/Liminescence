@@ -3,6 +3,11 @@
 #include<vector>
 #include"World.h"
 
+
+const int MAX_HEIGHT = 40;
+const int MIN_HEIGHT = 8;
+
+
 Chunk::Chunk()
 {
 	meshDirty = true;
@@ -53,10 +58,26 @@ void Chunk::Fill(int worldX, int worldZ)
 	{
 		for (int z = 0; z < CHUNK_DEPTH; z++)
 		{
-			float nx = (worldX * CHUNK_WIDTH + x) * 0.1f;
-			float nz = (worldZ * CHUNK_DEPTH + z) * 0.1f;
-			float noise = stb_perlin_noise3(nx, 0, nz, 0, 0, 0);
-			int height = (int)((noise + 1.f) * 0.5f * 24) + 8;
+			float nx = (worldX * CHUNK_WIDTH + x);
+			float nz = (worldZ * CHUNK_DEPTH + z);
+
+			// layer multiple octaves
+			float noise = 0.f;
+			float amplitude = 1.f;
+			float frequency = 0.01f; // lower->broader smoother hills, higher->jagged terrain
+			float maxAmplitude = 0.f;
+			for (int i = 0; i < 4; i++)
+			{
+				noise += stb_perlin_noise3(nx * frequency, 0, nz * frequency, 0, 0, 0) * amplitude;
+				maxAmplitude += amplitude;
+				amplitude *= 0.5f;	// called persistence; lower vals make fine detail less prominent
+				frequency *= 2.f;	// called lacunarity; higher vals make each octave finer
+			}
+
+			// normalize to -1...1
+			noise /= maxAmplitude;
+
+			int height = (int)((noise + 1.f) * 0.5f * MAX_HEIGHT) + MIN_HEIGHT;
 
 			for (int y = 0; y < CHUNK_HEIGHT; y++)
 			{
