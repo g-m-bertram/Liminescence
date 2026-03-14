@@ -62,7 +62,6 @@ public:
 	void Update(Vector3 playerPos);
 	void Draw();
 	uint8_t GetBlock(int x, int y, int z);
-	uint8_t GetBlockNoLock(int x, int y, int z);
 
 
 	RaycastResult Raycast(Vector3 origin, Vector3 direction, float maxDistance);

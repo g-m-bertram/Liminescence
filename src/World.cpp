@@ -103,10 +103,28 @@ void World::Update(Vector3 playerPos)
 			auto& [coord, chunk] = readyQueue.front();
 
 			// re-upload mesh on main thread
-			chunk->UploadMeshData();
+			{
+				std::lock_guard<std::mutex> chunksLock(chunksMutex);
+				chunks[coord] = std::move(chunk);
 
-			std::lock_guard<std::mutex> chunksLock(chunksMutex);
-			chunks[coord] = std::move(chunk);
+				// rebuild neighbors so their edges reflect the new chunk
+				auto rebuildNeighbor = [&](int nx, int nz)
+				{
+					auto n = chunks.find({ nx, nz });
+					if (n != chunks.end())
+					{
+						ChunkNeighborData nNeighbors = GetNeighborData(nx, nz);
+						n->second->BuildMeshData(nNeighbors);
+						n->second->UploadMeshData();
+					}
+				};
+
+				rebuildNeighbor(coord.x - 1, coord.z);
+				rebuildNeighbor(coord.x + 1, coord.z);
+				rebuildNeighbor(coord.x, coord.z - 1);
+				rebuildNeighbor(coord.x, coord.z + 1);
+			}
+
 			readyQueue.pop();
 		}
 	}
@@ -130,9 +148,9 @@ void World::Update(Vector3 playerPos)
 
 void World::Draw()
 {
+	std::lock_guard<std::mutex> lock(chunksMutex);
 	for (auto& pair : chunks)
 	{
-		std::lock_guard<std::mutex> lock(chunksMutex);
 		pair.second->Draw({
 			(float)(pair.first.x * CHUNK_WIDTH),
 			0.0f,
@@ -151,24 +169,6 @@ uint8_t World::GetBlock(int x, int y, int z)
 	if (it == chunks.end()) { return BLOCK_STONE; }
 	if (y < 0)				{ return BLOCK_STONE; }
 	if (y >= CHUNK_HEIGHT)	{ return BLOCK_AIR; }
-
-	// local coords in chunk
-	int lx = x - chunkX * CHUNK_WIDTH;
-	int lz = z - chunkZ * CHUNK_DEPTH;
-
-	return it->second->blocks[lx][y][lz];
-}
-
-uint8_t World::GetBlockNoLock(int x, int y, int z)
-{
-	// figure out which chunk the coord is in
-	int chunkX = (int)floor((float)x / CHUNK_WIDTH);
-	int chunkZ = (int)floor((float)z / CHUNK_DEPTH);
-
-	auto it = chunks.find({ chunkX, chunkZ });
-	if (it == chunks.end()) { return BLOCK_STONE; }
-	if (y < 0) { return BLOCK_STONE; }
-	if (y >= CHUNK_HEIGHT) { return BLOCK_AIR; }
 
 	// local coords in chunk
 	int lx = x - chunkX * CHUNK_WIDTH;
@@ -255,7 +255,7 @@ void World::SetBlock(int x, int y, int z, uint8_t block)
 		if (lx == 0) { rebuildNeighbor(chunkX - 1, chunkZ); }
 		if (lx == CHUNK_WIDTH - 1) { rebuildNeighbor(chunkX + 1, chunkZ); }
 		if (lz == 0) { rebuildNeighbor(chunkX, chunkZ - 1); }
-		if (lz == CHUNK_DEPTH) { rebuildNeighbor(chunkX, chunkZ + 1); }
+		if (lz == CHUNK_DEPTH - 1) { rebuildNeighbor(chunkX, chunkZ + 1); }
 	}
 }
 

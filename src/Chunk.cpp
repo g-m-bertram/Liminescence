@@ -6,7 +6,8 @@
 Chunk::Chunk()
 {
 	meshDirty = true;
-	mesh = {};
+	meshReady = false;
+	memset(&mesh, 0, sizeof(Mesh));
 
 	// initialize all blocks to air
 	for (int x = 0; x < CHUNK_WIDTH; x++)
@@ -25,7 +26,7 @@ bool Chunk::IsAir(int x, int y, int z, const ChunkNeighborData& neighbors)
 {
 	// in bounds - check local blocks
 	if (x >= 0 && x < CHUNK_WIDTH &&
-		y >- 0 && y < CHUNK_HEIGHT &&
+		y >= 0 && y < CHUNK_HEIGHT &&
 		z >= 0 && z < CHUNK_DEPTH)
 		return blocks[x][y][z] == 0;
 
@@ -156,7 +157,7 @@ void Chunk::BuildMeshData(const ChunkNeighborData& neighbors)
 		}
 	}
 
-	if (mesh.vboId != nullptr) { UnloadMesh(mesh); }
+	if (meshReady && mesh.vboId != nullptr) { UnloadMesh(mesh); }
 
 	mesh = {};
 	mesh.triangleCount = vertices.size() / 9;
@@ -178,12 +179,12 @@ void Chunk::BuildMeshData(const ChunkNeighborData& neighbors)
 void Chunk::UploadMeshData()
 {
 	UploadMesh(&mesh, false);
-	meshDirty = false;
+	meshReady = true;
 }
 
 void Chunk::Draw(Vector3 position)
 {
-	if (mesh.vertexCount == 0) { return; }
+	if (!meshReady || mesh.vertexCount == 0) { return; }
 
 	Material mat = LoadMaterialDefault();
 	DrawMesh(mesh, mat, MatrixTranslate(position.x, position.y, position.z));

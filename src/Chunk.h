@@ -28,6 +28,7 @@ public:
 	uint8_t blocks[CHUNK_WIDTH][CHUNK_HEIGHT][CHUNK_DEPTH];
 
 	Mesh mesh;
+	bool meshReady;
 	bool meshDirty;
 
 	Chunk();
