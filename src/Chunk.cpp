@@ -6,6 +6,7 @@
 
 const int MAX_HEIGHT = 40;
 const int MIN_HEIGHT = 8;
+const int SEA_LEVEL = 16;
 
 
 Chunk::Chunk()
@@ -70,7 +71,7 @@ void Chunk::Fill(int worldX, int worldZ)
 			{
 				noise += stb_perlin_noise3(nx * frequency, 0, nz * frequency, 0, 0, 0) * amplitude;
 				maxAmplitude += amplitude;
-				amplitude *= 0.5f;	// called persistence; lower vals make fine detail less prominent
+				amplitude *= 0.7f;	// called persistence; lower vals make fine detail less prominent
 				frequency *= 2.f;	// called lacunarity; higher vals make each octave finer
 			}
 
@@ -81,10 +82,12 @@ void Chunk::Fill(int worldX, int worldZ)
 
 			for (int y = 0; y < CHUNK_HEIGHT; y++)
 			{
-				if (y > height)
+				if (y > height && y <= SEA_LEVEL)
+					blocks[x][y][z] = BLOCK_WATER;
+				else if (y > height)
 					blocks[x][y][z] = BLOCK_AIR;
 				else if (y == height)
-					blocks[x][y][z] = BLOCK_GRASS;
+					blocks[x][y][z] = y >= SEA_LEVEL ? BLOCK_GRASS : BLOCK_DIRT;
 				else if (y >= height - 3)
 					blocks[x][y][z] = BLOCK_DIRT;
 				else
