@@ -70,6 +70,7 @@ public:
 
 private:
 	Vector3 playerPos;
+	Shader fogShader;
 
 	void LoadChunk(int cx, int cz);
 	void UnloadChunk(int cx, int cz);

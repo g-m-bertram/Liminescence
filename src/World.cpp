@@ -14,15 +14,43 @@ World::World() : loadQueue([this](const ChunkCoord& a, const ChunkCoord& b)
 	playerPos = { 0,0,0 };
 	running = true;
 	chunkMaterial = LoadMaterialDefault();
+	// shader initialization
+	fogShader = LoadShader("assets/shaders/chunk.vs", "assets/shaders/chunk.fs");
+	int fogColorLoc =	GetShaderLocation(fogShader, "fogColor");
+	int fogStartLoc =	GetShaderLocation(fogShader, "fogStart");
+	int fogEndLoc =		GetShaderLocation(fogShader, "fogEnd");
+	float fogColor[4] = { 0.5f, 0.7f, 1.f, 1.f }; // skyblue
+	float fogStart =	(VIEW_DISTANCE - 1) * CHUNK_WIDTH * 0.8f;
+	float fogEnd =		VIEW_DISTANCE * CHUNK_WIDTH * 0.9f;
+	SetShaderValue(fogShader, fogColorLoc,	fogColor,	SHADER_UNIFORM_VEC4);
+	SetShaderValue(fogShader, fogStartLoc,	&fogStart,	SHADER_UNIFORM_FLOAT);
+	SetShaderValue(fogShader, fogEndLoc,	&fogEnd,	SHADER_UNIFORM_FLOAT);
+	chunkMaterial.shader = fogShader;
+
 	genThread = std::thread(&World::ChunkGenThread, this);
 }
 
 World::~World()
 {
+	// stop thread first
 	running = false;
-	UnloadMaterial(chunkMaterial);
 	if (genThread.joinable())
 		genThread.join();
+
+	// clear queues
+	{
+		std::lock_guard<std::mutex> lock(readyQueueMutex);
+		while (!readyQueue.empty()) { readyQueue.pop(); }
+	}
+
+	// unload gpu resources
+	UnloadMaterial(chunkMaterial);
+
+	// clear chunks
+	{
+		std::lock_guard<std::mutex> lock(chunksMutex);
+		chunks.clear();
+	}
 }
 
 void World::ChunkGenThread()
@@ -160,6 +188,9 @@ void World::Update(Vector3 playerPos)
 
 void World::Draw()
 {
+	int camPosLoc = GetShaderLocation(fogShader, "cameraPosition");
+	SetShaderValue(fogShader, camPosLoc, &playerPos, SHADER_UNIFORM_VEC3);
+
 	std::lock_guard<std::mutex> lock(chunksMutex);
 	for (auto& pair : chunks)
 	{
