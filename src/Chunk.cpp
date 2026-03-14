@@ -1,7 +1,7 @@
 #include"Chunk.h"
 #include"external/stb_perlin.h"
 #include<vector>
-
+#include"World.h"
 
 Chunk::Chunk()
 {
@@ -21,12 +21,29 @@ Chunk::Chunk()
 	}
 }
 
-bool Chunk::IsAir(int x, int y, int z)
+bool Chunk::IsAir(int x, int y, int z, const ChunkNeighborData& neighbors)
 {
-	if (x < 0 || x >= CHUNK_WIDTH) return true;
-	if (y < 0 || x >= CHUNK_HEIGHT) return true;
-	if (z < 0 || z >= CHUNK_DEPTH) return true;
-	return blocks[x][y][z] == 0;
+	// in bounds - check local blocks
+	if (x >= 0 && x < CHUNK_WIDTH &&
+		y >- 0 && y < CHUNK_HEIGHT &&
+		z >= 0 && z < CHUNK_DEPTH)
+		return blocks[x][y][z] == 0;
+
+	// out of bounds - query world
+	if (y < 0)				{ return false; }
+	if (y >= CHUNK_HEIGHT)	{ return true; }
+
+	// out of bounds - check neighbor snapshot
+	if (x < 0 && neighbors.hasLeft)
+		return neighbors.left[y][z] == BLOCK_AIR;
+	if (x >= CHUNK_WIDTH && neighbors.hasRight)
+		return neighbors.right[y][z] == BLOCK_AIR;
+	if (z < 0 && neighbors.hasBack)
+		return neighbors.back[x][y] == BLOCK_AIR;
+	if (z >= CHUNK_DEPTH && neighbors.hasFront)
+		return neighbors.front[x][y] == BLOCK_AIR;
+
+	return true;
 }
 
 void Chunk::Fill(int worldX, int worldZ)
@@ -59,11 +76,12 @@ void Chunk::Fill(int worldX, int worldZ)
 
 void Chunk::BuildMesh()
 {
-	BuildMeshData();
+	ChunkNeighborData neighbors = {};
+	BuildMeshData(neighbors);
 	UploadMeshData();
 }
 
-void Chunk::BuildMeshData()
+void Chunk::BuildMeshData(const ChunkNeighborData& neighbors)
 {
 	std::vector<float> vertices;
 	std::vector<float> normals;
@@ -108,7 +126,7 @@ void Chunk::BuildMeshData()
 		{
 			for (int z = 0; z < CHUNK_DEPTH; z++)
 			{
-				if (blocks[x][y][z] == 0) { continue; }
+				if (blocks[x][y][z] == BLOCK_AIR) { continue; }
 
 				Color color = GetBlockColor((BlockType)blocks[x][y][z]);
 
@@ -117,22 +135,22 @@ void Chunk::BuildMeshData()
 				float z0 = z, z1 = z + 1;
 
 				// top
-				if (IsAir(x, y + 1, z))
+				if (IsAir(x, y + 1, z, neighbors))
 					addFace({ x0, y1, z1 }, { x1, y1, z1 }, { x1, y1, z0 }, { x0, y1, z0 }, { 0, 1, 0 }, color);
 				// bottom
-				if (IsAir(x, y - 1, z))
+				if (IsAir(x, y - 1, z, neighbors))
 					addFace({ x0, y0, z0 }, { x1, y0, z0 }, { x1, y0, z1 }, { x0, y0, z1 }, { 0, -1, 0 }, color);
 				// front
-				if (IsAir(x, y, z + 1))
+				if (IsAir(x, y, z + 1, neighbors))
 					addFace({ x0, y0, z1 }, { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 }, { 0, 0, 1 }, color);
 				// back
-				if (IsAir(x, y, z - 1))
+				if (IsAir(x, y, z - 1, neighbors))
 					addFace({ x1, y0, z0 }, { x0, y0, z0 }, { x0, y1, z0 }, { x1, y1, z0 }, { 0, 0, -1 }, color);
 				// right
-				if (IsAir(x + 1, y, z))
+				if (IsAir(x + 1, y, z, neighbors))
 					addFace({ x1, y0, z1 }, { x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { 1, 0, 0 }, color);
 				// left
-				if (IsAir(x - 1, y, z))
+				if (IsAir(x - 1, y, z, neighbors))
 					addFace({ x0, y0, z0 }, { x0, y0, z1 }, { x0, y1, z1 }, { x0, y1, z0 }, { -1, 0, 0 }, color);
 			}
 		}
@@ -153,6 +171,8 @@ void Chunk::BuildMeshData()
 	memcpy(mesh.normals, normals.data(), normals.size() * sizeof(float));
 	memcpy(mesh.colors, colors.data(), colors.size() * sizeof(unsigned char));
 	memcpy(mesh.indices, indices.data(), indices.size() * sizeof(unsigned short));
+
+	meshDirty = false;
 }
 
 void Chunk::UploadMeshData()

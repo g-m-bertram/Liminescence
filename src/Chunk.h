@@ -5,9 +5,20 @@
 #include"BlockTypes.h"
 
 
+class World;
+
 const int CHUNK_WIDTH = 16;
 const int CHUNK_HEIGHT = 16;
 const int CHUNK_DEPTH = 16;
+
+struct ChunkNeighborData
+{
+	uint8_t left[CHUNK_HEIGHT][CHUNK_DEPTH]; // x - 1 neighbor
+	uint8_t right[CHUNK_HEIGHT][CHUNK_DEPTH];
+	uint8_t back[CHUNK_WIDTH][CHUNK_HEIGHT];
+	uint8_t front[CHUNK_WIDTH][CHUNK_HEIGHT]; // z + 1 neighbor
+	bool hasLeft, hasRight, hasBack, hasFront;
+};
 
 class Chunk
 {
@@ -22,11 +33,11 @@ public:
 	Chunk();
 	void Fill(int worldX, int worldZ);
 	void BuildMesh();
-	void BuildMeshData();	// safe to call on background thread
+	void BuildMeshData(const ChunkNeighborData& neighbors);	// safe to call on background thread
 	void UploadMeshData();	// must be called on main thread
 	void Draw(Vector3 position);
 
 private:
-	bool IsAir(int x, int y, int z);
+	bool IsAir(int x, int y, int z, const ChunkNeighborData& neighbors);
 
 };

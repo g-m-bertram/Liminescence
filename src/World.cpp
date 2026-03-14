@@ -45,9 +45,19 @@ void World::ChunkGenThread()
 		}
 
 		// generate chunk data and build mesh data on background thread
+		// no locks needed as this chunk isn't in the map yet
 		auto chunk = std::make_unique<Chunk>();
 		chunk->Fill(coord.x, coord.z);
-		chunk->BuildMeshData();
+
+		// take neighbor snapshot while holding the lock
+		ChunkNeighborData neighbors;
+		{
+			std::lock_guard<std::mutex> lock(chunksMutex);
+			neighbors = GetNeighborData(coord.x, coord.z);
+		}
+		//chunk->BuildMeshData(this, coord.x, coord.z);		<-- old; before GetNeighborData()
+		// build mesh data with snapshot; no locks needed
+		chunk->BuildMeshData(neighbors);
 
 		{
 			std::lock_guard<std::mutex> lock(readyQueueMutex);
@@ -149,6 +159,24 @@ uint8_t World::GetBlock(int x, int y, int z)
 	return it->second->blocks[lx][y][lz];
 }
 
+uint8_t World::GetBlockNoLock(int x, int y, int z)
+{
+	// figure out which chunk the coord is in
+	int chunkX = (int)floor((float)x / CHUNK_WIDTH);
+	int chunkZ = (int)floor((float)z / CHUNK_DEPTH);
+
+	auto it = chunks.find({ chunkX, chunkZ });
+	if (it == chunks.end()) { return BLOCK_STONE; }
+	if (y < 0) { return BLOCK_STONE; }
+	if (y >= CHUNK_HEIGHT) { return BLOCK_AIR; }
+
+	// local coords in chunk
+	int lx = x - chunkX * CHUNK_WIDTH;
+	int lz = z - chunkZ * CHUNK_DEPTH;
+
+	return it->second->blocks[lx][y][lz];
+}
+
 RaycastResult World::Raycast(Vector3 origin, Vector3 direction, float maxDistance)
 {
 	RaycastResult result = {};
@@ -196,14 +224,100 @@ void World::SetBlock(int x, int y, int z, uint8_t block)
 	int chunkX = (int)floor((float)x / CHUNK_WIDTH);
 	int chunkZ = (int)floor((float)z / CHUNK_DEPTH);
 
-	std::lock_guard<std::mutex> lock(chunksMutex);
-	auto it = chunks.find({ chunkX, chunkZ });
-	if (it == chunks.end()) { return; }
-	if (y < 0 || y >= CHUNK_HEIGHT) { return; }
+	{
+		std::lock_guard<std::mutex> lock(chunksMutex);
+		auto it = chunks.find({ chunkX, chunkZ });
+		if (it == chunks.end()) { return; }
+		if (y < 0 || y >= CHUNK_HEIGHT) { return; }
 
-	int lx = x - chunkX * CHUNK_WIDTH;
-	int lz = z - chunkZ * CHUNK_DEPTH;
+		int lx = x - chunkX * CHUNK_WIDTH;
+		int lz = z - chunkZ * CHUNK_DEPTH;
 
-	it->second->blocks[lx][y][lz] = block;
-	it->second->BuildMesh();
+		it->second->blocks[lx][y][lz] = block;
+
+		// rebuild affected chunk
+		ChunkNeighborData neighbors = GetNeighborData(chunkX, chunkZ);
+		it->second->BuildMeshData(neighbors);
+		it->second->UploadMeshData();
+
+		// rebuild neighbors if on edge of chunk
+		auto rebuildNeighbor = [&](int nx, int nz)
+		{
+			auto n = chunks.find({ nx, nz });
+			if (n != chunks.end())
+			{
+				ChunkNeighborData nNeighbors = GetNeighborData(nx, nz);
+				n->second->BuildMeshData(nNeighbors);
+				n->second->UploadMeshData();
+			}
+		};
+
+		if (lx == 0) { rebuildNeighbor(chunkX - 1, chunkZ); }
+		if (lx == CHUNK_WIDTH - 1) { rebuildNeighbor(chunkX + 1, chunkZ); }
+		if (lz == 0) { rebuildNeighbor(chunkX, chunkZ - 1); }
+		if (lz == CHUNK_DEPTH) { rebuildNeighbor(chunkX, chunkZ + 1); }
+	}
+}
+
+ChunkNeighborData World::GetNeighborData(int chunkX, int chunkZ)
+{
+	ChunkNeighborData neighbors = {};
+
+	auto copyEdge = [&](int cx, int cz, auto copyFunc)
+	{
+			auto it = chunks.find({cx, cz});
+			if (it == chunks.end()) { return false; }
+			copyFunc(it->second.get());
+			return true;
+	};
+
+	// left neighbor (x - 1), copy its right edge (x = CHUNK_WIDTH - 1)
+	neighbors.hasLeft = copyEdge(chunkX - 1, chunkZ, [&](Chunk* c)
+		{
+			for (int y = 0; y < CHUNK_HEIGHT; y++)
+			{
+				for (int z = 0; z < CHUNK_DEPTH; z++)
+				{
+					neighbors.left[y][z] = c->blocks[CHUNK_WIDTH - 1][y][z];
+				}
+			}
+		});
+
+	// right neighbor (x + 1), copy its left edge (x = 0)
+	neighbors.hasRight = copyEdge(chunkX + 1, chunkZ, [&](Chunk* c)
+		{
+			for (int y = 0; y < CHUNK_HEIGHT; y++)
+			{
+				for (int z = 0; z < CHUNK_DEPTH; z++)
+				{
+					neighbors.right[y][z] = c->blocks[0][y][z];
+				}
+			}
+		});
+
+	// back neighbor (z - 1), copy its front edge (z = CHUNK_DEPTH - 1)
+	neighbors.hasBack = copyEdge(chunkX, chunkZ - 1, [&](Chunk* c)
+		{
+			for (int x = 0; x < CHUNK_WIDTH; x++)
+			{
+				for (int y = 0; y < CHUNK_HEIGHT; y++)
+				{
+					neighbors.back[x][y] = c->blocks[x][y][CHUNK_DEPTH - 1];
+				}
+			}
+		});
+
+	// front neighbor (z + 1), copy its back edge (z = 0)
+	neighbors.hasFront = copyEdge(chunkX, chunkZ + 1, [&](Chunk* c)
+		{
+			for (int x = 0; x < CHUNK_WIDTH; x++)
+			{
+				for (int y = 0; y < CHUNK_HEIGHT; y++)
+				{
+					neighbors.front[x][y] = c->blocks[x][y][0];
+				}
+			}
+		});
+
+	return neighbors;
 }
