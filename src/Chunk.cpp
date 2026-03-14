@@ -56,7 +56,7 @@ void Chunk::Fill(int worldX, int worldZ)
 			float nx = (worldX * CHUNK_WIDTH + x) * 0.1f;
 			float nz = (worldZ * CHUNK_DEPTH + z) * 0.1f;
 			float noise = stb_perlin_noise3(nx, 0, nz, 0, 0, 0);
-			int height = (int)((noise + 1.f) * 0.5f * 8) + 4;
+			int height = (int)((noise + 1.f) * 0.5f * 24) + 8;
 
 			for (int y = 0; y < CHUNK_HEIGHT; y++)
 			{
@@ -156,6 +156,9 @@ void Chunk::BuildMeshData(const ChunkNeighborData& neighbors)
 			}
 		}
 	}
+
+	if (indices.size() > 60000)
+		TraceLog(LOG_WARNING, "Chunk at high index count: %d indices", (int)indices.size());
 
 	if (meshReady && mesh.vboId != nullptr) { UnloadMesh(mesh); }
 
