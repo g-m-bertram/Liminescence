@@ -36,7 +36,7 @@ public:
 	void BuildMesh();
 	void BuildMeshData(const ChunkNeighborData& neighbors);	// safe to call on background thread
 	void UploadMeshData();	// must be called on main thread
-	void Draw(Vector3 position);
+	void Draw(Vector3 position, Material& mat);
 
 private:
 	bool IsAir(int x, int y, int z, const ChunkNeighborData& neighbors);

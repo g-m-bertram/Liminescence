@@ -72,6 +72,8 @@ private:
 	void UnloadChunk(int cx, int cz);
 	void ChunkGenThread();
 
+	Material chunkMaterial;
+
 	std::thread genThread;
 	std::mutex chunksMutex;
 

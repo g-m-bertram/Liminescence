@@ -5,12 +5,14 @@
 World::World()
 {
 	running = true;
+	chunkMaterial = LoadMaterialDefault();
 	genThread = std::thread(&World::ChunkGenThread, this);
 }
 
 World::~World()
 {
 	running = false;
+	UnloadMaterial(chunkMaterial);
 	if (genThread.joinable())
 		genThread.join();
 }
@@ -155,7 +157,8 @@ void World::Draw()
 			(float)(pair.first.x * CHUNK_WIDTH),
 			0.0f,
 			(float)(pair.first.z * CHUNK_DEPTH)
-			});
+			},
+			chunkMaterial);
 	}
 }
 

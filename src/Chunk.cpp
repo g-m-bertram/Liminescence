@@ -185,11 +185,9 @@ void Chunk::UploadMeshData()
 	meshReady = true;
 }
 
-void Chunk::Draw(Vector3 position)
+void Chunk::Draw(Vector3 position, Material& mat)
 {
 	if (!meshReady || mesh.vertexCount == 0) { return; }
 
-	Material mat = LoadMaterialDefault();
 	DrawMesh(mesh, mat, MatrixTranslate(position.x, position.y, position.z));
-	UnloadMaterial(mat);
 }
