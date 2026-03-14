@@ -6,7 +6,6 @@
 #include<mutex>
 #include<queue>
 #include<functional>
-#include<unordered_set>
 #include"Chunk.h"
 
 /*
@@ -62,7 +61,7 @@ public:
 	World();
 	~World();
 	void Update(Vector3 playerPos);
-	void Draw();
+	void Draw(Camera3D& camera);
 	uint8_t GetBlock(int x, int y, int z);
 
 
@@ -100,4 +99,5 @@ private:
 	bool running;
 
 	ChunkNeighborData GetNeighborData(int chunkX, int chunkZ);
+	bool IsChunkVisible(int chunkX, int chunkZ, Camera3D& camera);
 };

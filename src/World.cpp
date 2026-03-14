@@ -193,7 +193,7 @@ void World::Update(Vector3 playerPos)
 		UnloadChunk(coord.x, coord.z);
 }
 
-void World::Draw()
+void World::Draw(Camera3D& camera)
 {
 	int camPosLoc = GetShaderLocation(fogShader, "cameraPosition");
 	SetShaderValue(fogShader, camPosLoc, &playerPos, SHADER_UNIFORM_VEC3);
@@ -201,6 +201,7 @@ void World::Draw()
 	std::lock_guard<std::mutex> lock(chunksMutex);
 	for (auto& pair : chunks)
 	{
+		if (!IsChunkVisible(pair.first.x, pair.first.z, camera)) { continue; }
 		pair.second->Draw({
 			(float)(pair.first.x * CHUNK_WIDTH),
 			0.0f,
@@ -371,4 +372,49 @@ ChunkNeighborData World::GetNeighborData(int chunkX, int chunkZ)
 		});
 
 	return neighbors;
+}
+
+
+bool World::IsChunkVisible(int chunkX, int chunkZ, Camera3D& camera)
+{
+	// get chunk center in worldspace
+	float centerX = chunkX * CHUNK_WIDTH + CHUNK_WIDTH * 0.5f;
+	float centerY = CHUNK_HEIGHT * 0.5f;
+	float centerZ = chunkZ * CHUNK_DEPTH + CHUNK_DEPTH * 0.5f;
+
+	// radius that encompasses the whole chunk
+	float radius = Vector3Length({ (float)CHUNK_WIDTH, (float)CHUNK_HEIGHT, (float)CHUNK_DEPTH }) * 0.5f;
+	
+	// use raylib's sphere frustum check
+	Matrix matProj = MatrixPerspective(camera.fovy,
+					(float)GetScreenWidth() / GetScreenHeight(),
+					0.01f, 1000.f);
+	Matrix matView = MatrixLookAt(camera.position, camera.target, camera.up);
+	Matrix matVP = MatrixMultiply(matView, matProj);
+
+	// check all 6 frustum planes
+	Vector4 planes[6];
+	// left
+	planes[0] = { matVP.m3 + matVP.m0, matVP.m7 + matVP.m4, matVP.m11 + matVP.m8, matVP.m15 + matVP.m12};
+	// right
+	planes[1] = { matVP.m3 - matVP.m0, matVP.m7 - matVP.m4, matVP.m11 - matVP.m8, matVP.m15 - matVP.m12 };
+	// bottom
+	planes[2] = { matVP.m3 + matVP.m1, matVP.m7 + matVP.m5, matVP.m11 + matVP.m9, matVP.m15 + matVP.m13 };
+	// top
+	planes[3] = { matVP.m3 - matVP.m1, matVP.m7 - matVP.m5, matVP.m11 - matVP.m9, matVP.m15 - matVP.m13 };
+	// near
+	planes[4] = { matVP.m3 + matVP.m2, matVP.m7 + matVP.m6, matVP.m11 + matVP.m10, matVP.m15 + matVP.m14 };
+	// far
+	planes[5] = { matVP.m3 - matVP.m2, matVP.m7 - matVP.m6, matVP.m11 - matVP.m10, matVP.m15 - matVP.m14 };
+	
+	for (int i = 0; i < 6; i++)
+	{
+		float len = sqrtf(planes[i].x * planes[i].x + planes[i].y * planes[i].y + planes[i].z * planes[i].z);
+		planes[i] = { planes[i].x / len, planes[i].y / len, planes[i].z / len, planes[i].w / len};
+	
+		float dist = planes[i].x * centerX + planes[i].y * centerY + planes[i].z * centerZ + planes[i].w;
+		if (dist < -radius) { return false; }
+	}
+
+	return true;
 }

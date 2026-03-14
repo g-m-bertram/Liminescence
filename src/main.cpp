@@ -36,7 +36,7 @@ int main()
 
             BeginMode3D(player.camera);
             DrawGrid(64.f, 1.f);
-            world.Draw();
+            world.Draw(player.camera);
             if (ray.hit)
             {
                 // highlight selected block
