@@ -5,6 +5,7 @@
 #include<thread>
 #include<mutex>
 #include<queue>
+#include<functional>
 #include"Chunk.h"
 
 /*
@@ -68,6 +69,8 @@ public:
 	void SetBlock(int x, int y, int z, uint8_t block);
 
 private:
+	Vector3 playerPos;
+
 	void LoadChunk(int cx, int cz);
 	void UnloadChunk(int cx, int cz);
 	void ChunkGenThread();
@@ -77,7 +80,12 @@ private:
 	std::thread genThread;
 	std::mutex chunksMutex;
 
-	std::queue<ChunkCoord> loadQueue;
+	std::priority_queue<
+		ChunkCoord,
+		std::vector<ChunkCoord>,
+		std::function<bool(const ChunkCoord&, const ChunkCoord&)>
+		> loadQueue;
+
 	std::mutex loadQueueMutex;
 
 	std::queue<std::pair<ChunkCoord, std::unique_ptr<Chunk>>> readyQueue;

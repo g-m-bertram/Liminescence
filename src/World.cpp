@@ -2,8 +2,16 @@
 #include<cmath>
 
 
-World::World()
+World::World() : loadQueue([this](const ChunkCoord& a, const ChunkCoord& b)
+	{
+		int ax = a.x * CHUNK_WIDTH - (int)playerPos.x;
+		int az = a.z * CHUNK_DEPTH - (int)playerPos.z;
+		int bx = b.x * CHUNK_WIDTH - (int)playerPos.x;
+		int bz = b.z * CHUNK_DEPTH - (int)playerPos.z;
+		return (ax * ax + az * az) > (bx * bx + bz * bz);
+	})
 {
+	playerPos = { 0,0,0 };
 	running = true;
 	chunkMaterial = LoadMaterialDefault();
 	genThread = std::thread(&World::ChunkGenThread, this);
@@ -28,7 +36,7 @@ void World::ChunkGenThread()
 			std::lock_guard<std::mutex> lock(loadQueueMutex);
 			if (!loadQueue.empty())
 			{
-				coord = loadQueue.front();
+				coord = loadQueue.top();
 				loadQueue.pop();
 				hasWork = true;
 			}
@@ -89,6 +97,8 @@ void World::UnloadChunk(int cx, int cz)
 
 void World::Update(Vector3 playerPos)
 {
+	this->playerPos = playerPos;
+
 	int playerChunkX = (int)floor(playerPos.x / CHUNK_WIDTH);
 	int playerChunkZ = (int)floor(playerPos.z / CHUNK_DEPTH);
 
