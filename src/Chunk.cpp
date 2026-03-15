@@ -127,7 +127,9 @@ void Chunk::BuildMeshData(const ChunkNeighborData& neighbors)
 	unsigned short wIndex = 0;
 
 	auto addFace = [&]
-	(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal, Color color, bool water)
+	(Vector3 a, Vector3 b, Vector3 c, Vector3 d, 
+		Vector3 normal, Color color, bool water,
+		float ao0, float ao1, float ao2, float ao3)
 		{
 			auto& v = water ? wVertices : vertices;
 			auto& n = water ? wNormals : normals;
@@ -144,21 +146,28 @@ void Chunk::BuildMeshData(const ChunkNeighborData& neighbors)
 			v.insert(v.end(), { c.x, c.y, c.z });
 			v.insert(v.end(), { d.x, d.y, d.z });
 
+			float aos[4] = { ao0, ao2, ao2, ao3 };
+			// triangle 1: a, b, c = indices 0, 1, 2
+			// triangle 2: a, c, d = indices 0, 2, 3
+			int triIndices[6] = { 0, 1, 2, 0, 2, 3 };
 			for (int i = 0; i < 6; i++) // find normals of each face
 			{
+				float ao = aos[triIndices[i]];
 				n.insert(n.end(), { normal.x, normal.y, normal.z });
-				co.insert(co.end(), { color.r, color.g, color.b, color.a });
+				co.insert(co.end(), { 
+					(unsigned char)(color.r * ao), 
+					(unsigned char)(color.g * ao), 
+					(unsigned char)(color.b * ao), 
+					color.a});
 			}
 
-			ind.insert
-			(ind.end(),
+			ind.insert(ind.end(),
 				{ idx,
 				(unsigned short)(idx + 1),
 				(unsigned short)(idx + 2),
 				(unsigned short)(idx + 3),
 				(unsigned short)(idx + 4),
-				(unsigned short)(idx + 5) }
-			);
+				(unsigned short)(idx + 5) });
 			idx += 6;
 		};
 
@@ -205,40 +214,126 @@ void Chunk::BuildMeshData(const ChunkNeighborData& neighbors)
 					Color sideColor = { 20, 80, 160, 255 };
 
 					if (IsAir(x, y + 1, z, neighbors))
-					{
-						addFace({x0, y1, z1}, {x1, y1, z1}, {x1, y1, z0}, {x0, y1, z0}, {0, 1, 0}, color, true);
-					}
+						addFace({ x0, y1, z1 }, { x1, y1, z1 }, { x1, y1, z0 }, { x0, y1, z0 }, { 0, 1, 0 }, color, true, 1.f, 1.f, 1.f, 1.f);
 					
 					// side faces ony where adjacent to air
 					if (IsAir(x, y, z + 1, neighbors))
-						addFace({ x0, y0, z1 }, { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 }, { 0, 0, 1 }, sideColor, false);
+						addFace({ x0, y0, z1 }, { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 }, { 0, 0, 1 }, sideColor, false, 1.f, 1.f, 1.f, 1.f);
 					if (IsAir(x, y, z - 1, neighbors))
-						addFace({ x1, y0, z0 }, { x0, y0, z0 }, { x0, y1, z0 }, { x1, y1, z0 }, { 0, 0, -1 }, sideColor, false);
+						addFace({ x1, y0, z0 }, { x0, y0, z0 }, { x0, y1, z0 }, { x1, y1, z0 }, { 0, 0, -1 }, sideColor, false, 1.f, 1.f, 1.f, 1.f);
 					if (IsAir(x + 1, y, z, neighbors))
-						addFace({ x1, y0, z1 }, { x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { 1, 0, 0 }, sideColor, false);
+						addFace({ x1, y0, z1 }, { x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { 1, 0, 0 }, sideColor, false, 1.f, 1.f, 1.f, 1.f);
 					if (IsAir(x - 1, y, z, neighbors))
-						addFace({ x0, y0, z0 }, { x0, y0, z1 }, { x0, y1, z1 }, { x0, y1, z0 }, { -1, 0, 0 }, sideColor, false);
+						addFace({ x0, y0, z0 }, { x0, y0, z1 }, { x0, y1, z1 }, { x0, y1, z0 }, { -1, 0, 0 }, sideColor, false, 1.f, 1.f, 1.f, 1.f);
 				}
 				else
 				{
 					// top
 					if (IsAirForSolid(x, y + 1, z))
-						addFace({ x0, y1, z1 }, { x1, y1, z1 }, { x1, y1, z0 }, { x0, y1, z0 }, { 0, 1, 0 }, color, isWater);
+					{
+						bool s1, s2, c; // sides and corner
+						float ao0, ao1, ao2, ao3;
+
+						s1 = !IsAirForSolid(x - 1, y + 1, z); s2 = !IsAirForSolid(x, y + 1, z + 1); c = !IsAirForSolid(x - 1, y + 1, z + 1);
+						ao0 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x + 1, y + 1, z); s2 = !IsAirForSolid(x, y + 1, z + 1); c = !IsAirForSolid(x + 1, y + 1, z + 1);
+						ao1 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x + 1, y + 1, z); s2 = !IsAirForSolid(x, y + 1, z - 1); c = !IsAirForSolid(x + 1, y + 1, z - 1);
+						ao2 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x - 1, y + 1, z); s2 = !IsAirForSolid(x, y + 1, z - 1); c = !IsAirForSolid(x - 1, y + 1, z - 1);
+						ao3 = VertexAO(s1, s2, c);
+						addFace({ x0, y1, z1 }, { x1, y1, z1 }, { x1, y1, z0 }, { x0, y1, z0 }, { 0, 1, 0 }, color, false, ao0, ao1, ao2, ao3);
+					}
+
+
 					// bottom
 					if (IsAirForSolid(x, y - 1, z))
-						addFace({ x0, y0, z0 }, { x1, y0, z0 }, { x1, y0, z1 }, { x0, y0, z1 }, { 0, -1, 0 }, color, isWater);
+					{
+						bool s1, s2, c;
+						float ao0, ao1, ao2, ao3;
+
+						s1 = !IsAirForSolid(x - 1, y - 1, z); s2 = !IsAirForSolid(x, y - 1, z - 1); c = !IsAirForSolid(x - 1, y - 1, z - 1);
+						ao0 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x + 1, y - 1, z); s2 = !IsAirForSolid(x, y - 1, z - 1); c = !IsAirForSolid(x + 1, y - 1, z - 1);
+						ao1 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x + 1, y - 1, z); s2 = !IsAirForSolid(x, y - 1, z + 1); c = !IsAirForSolid(x + 1, y - 1, z + 1);
+						ao2 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x - 1, y - 1, z); s2 = !IsAirForSolid(x, y - 1, z + 1); c = !IsAirForSolid(x - 1, y - 1, z + 1);
+						ao3 = VertexAO(s1, s2, c);
+						addFace({ x0, y0, z0 }, { x1, y0, z0 }, { x1, y0, z1 }, { x0, y0, z1 }, { 0, -1, 0 }, color, false, ao0, ao1, ao2, ao3);
+					}
+
+
 					// front
 					if (IsAirForSolid(x, y, z + 1))
-						addFace({ x0, y0, z1 }, { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 }, { 0, 0, 1 }, color, isWater);
+					{
+						bool s1, s2, c;
+						float ao0, ao1, ao2, ao3;
+
+						s1 = !IsAirForSolid(x - 1, y, z + 1); s2 = !IsAirForSolid(x, y - 1, z + 1); c = !IsAirForSolid(x - 1, y - 1, z + 1);
+						ao0 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x + 1, y, z + 1); s2 = !IsAirForSolid(x, y - 1, z + 1); c = !IsAirForSolid(x + 1, y - 1, z + 1);
+						ao1 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x + 1, y, z + 1); s2 = !IsAirForSolid(x, y + 1, z + 1); c = !IsAirForSolid(x + 1, y + 1, z + 1);
+						ao2 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x - 1, y, z + 1); s2 = !IsAirForSolid(x, y + 1, z + 1); c = !IsAirForSolid(x - 1, y + 1, z + 1);
+						ao3 = VertexAO(s1, s2, c);
+						addFace({ x0, y0, z1 }, { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 }, { 0, 0, 1 }, color, false, ao0, ao1, ao2, ao3);
+					}
+
+
 					// back
 					if (IsAirForSolid(x, y, z - 1))
-						addFace({ x1, y0, z0 }, { x0, y0, z0 }, { x0, y1, z0 }, { x1, y1, z0 }, { 0, 0, -1 }, color, isWater);
+					{
+						bool s1, s2, c;
+						float ao0, ao1, ao2, ao3;
+
+						s1 = !IsAirForSolid(x + 1, y, z - 1); s2 = !IsAirForSolid(x, y - 1, z - 1); c = !IsAirForSolid(x + 1, y - 1, z - 1);
+						ao0 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x - 1, y, z - 1); s2 = !IsAirForSolid(x, y - 1, z - 1); c = !IsAirForSolid(x - 1, y - 1, z - 1);
+						ao1 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x - 1, y, z - 1); s2 = !IsAirForSolid(x, y + 1, z - 1); c = !IsAirForSolid(x - 1, y + 1, z - 1);
+						ao2 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x + 1, y, z - 1); s2 = !IsAirForSolid(x, y + 1, z - 1); c = !IsAirForSolid(x + 1, y + 1, z - 1);
+						ao3 = VertexAO(s1, s2, c);
+						addFace({ x1, y0, z0 }, { x0, y0, z0 }, { x0, y1, z0 }, { x1, y1, z0 }, { 0, 0, -1 }, color, false, ao0, ao1, ao2, ao3);
+					}
+
+
 					// right
 					if (IsAirForSolid(x + 1, y, z))
-						addFace({ x1, y0, z1 }, { x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { 1, 0, 0 }, color, isWater);
+					{
+						bool s1, s2, c;
+						float ao0, ao1, ao2, ao3;
+
+						s1 = !IsAirForSolid(x + 1, y, z + 1); s2 = !IsAirForSolid(x + 1, y - 1, z); c = !IsAirForSolid(x + 1, y - 1, z + 1);
+						ao0 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x + 1, y, z - 1); s2 = !IsAirForSolid(x + 1, y - 1, z); c = !IsAirForSolid(x + 1, y - 1, z - 1);
+						ao1 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x + 1, y, z - 1); s2 = !IsAirForSolid(x + 1, y + 1, z); c = !IsAirForSolid(x + 1, y + 1, z - 1);
+						ao2 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x + 1, y, z + 1); s2 = !IsAirForSolid(x + 1, y + 1, z); c = !IsAirForSolid(x + 1, y + 1, z + 1);
+						ao3 = VertexAO(s1, s2, c);
+						addFace({ x1, y0, z1 }, { x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { 1, 0, 0 }, color, false, ao0, ao1, ao2, ao3);
+					}
+
+
 					// left
 					if (IsAirForSolid(x - 1, y, z))
-						addFace({ x0, y0, z0 }, { x0, y0, z1 }, { x0, y1, z1 }, { x0, y1, z0 }, { -1, 0, 0 }, color, isWater);
+					{
+						bool s1, s2, c;
+						float ao0, ao1, ao2, ao3;
+
+						s1 = !IsAirForSolid(x - 1, y, z - 1); s2 = !IsAirForSolid(x - 1, y - 1, z); c = !IsAirForSolid(x - 1, y - 1, z - 1);
+						ao0 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x - 1, y, z + 1); s2 = !IsAirForSolid(x - 1, y - 1, z); c = !IsAirForSolid(x - 1, y - 1, z + 1);
+						ao1 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x - 1, y, z + 1); s2 = !IsAirForSolid(x - 1, y + 1, z); c = !IsAirForSolid(x - 1, y + 1, z + 1);
+						ao2 = VertexAO(s1, s2, c);
+						s1 = !IsAirForSolid(x - 1, y, z - 1); s2 = !IsAirForSolid(x - 1, y + 1, z); c = !IsAirForSolid(x - 1, y + 1, z - 1);
+						ao3 = VertexAO(s1, s2, c);
+						addFace({ x0, y0, z0 }, { x0, y0, z1 }, { x0, y1, z1 }, { x0, y1, z0 }, { -1, 0, 0 }, color, false, ao0, ao1, ao2, ao3);
+					}
 				}
 
 			}
@@ -309,5 +404,18 @@ void Chunk::DrawWater(Vector3 position, Material& mat)
 		|| waterMesh.vboId[0] == 0) 
 	{ return; }
 
+	// SetShaderValue() needs to be called while shader is active in order for 
+	// uniform variable to be picked up correctly. hence Begin/EndShaderMode()
+	BeginShaderMode(mat.shader); 
+	int chunkOffsetLoc = GetShaderLocation(mat.shader, "chunkOffset");
+	float offset[2] = { position.x, position.z };
+	SetShaderValue(mat.shader, chunkOffsetLoc, offset, SHADER_UNIFORM_VEC2);
+	EndShaderMode();
 	DrawMesh(waterMesh, mat, MatrixTranslate(position.x, position.y, position.z));
+}
+
+float Chunk::VertexAO(bool side1, bool side2, bool corner)
+{
+	if (side1 && side2) { return 0.6; } // darkest
+	return 1.f - (side1 + side2 + corner) * 0.15f;
 }

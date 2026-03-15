@@ -7,6 +7,7 @@ in vec4 vertexColor;
 uniform mat4 mvp;
 uniform mat4 matModel;
 uniform float time;
+uniform vec2 chunkOffset;
 
 out vec3 fragPosition;
 out vec3 fragNormal;
@@ -15,7 +16,11 @@ out vec4 fragColor;
 void main()
 {
 	vec3 pos = vertexPosition;
-	pos.y += sin(pos.x * 0.5 + time) * 0.04 + sin(pos.z * 0.5 + time * 0.7) * 0.04;
+
+	// use worldspace coords for wave phase only
+	float worldX = pos.x + chunkOffset.x;
+	float worldZ = pos.z + chunkOffset.y;
+	pos.y += sin(worldX * 0.5 + time) * 0.04 + sin(worldZ * 0.5 + time * 0.7) * 0.04;
 	
 	fragPosition = vec3(matModel * vec4(pos, 1.0));
 	fragNormal = vertexNormal;

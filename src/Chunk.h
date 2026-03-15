@@ -42,5 +42,5 @@ public:
 
 private:
 	bool IsAir(int x, int y, int z, const ChunkNeighborData& neighbors);
-
+	float VertexAO(bool side1, bool side2, bool corner); // ambient occlusion
 };
