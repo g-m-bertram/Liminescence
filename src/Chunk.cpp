@@ -206,8 +206,7 @@ void Chunk::BuildMeshData(const ChunkNeighborData& neighbors)
 
 					if (IsAir(x, y + 1, z, neighbors))
 					{
-						float wy1 = y1 - 0.1f;
-						addFace({x0, wy1, z1}, {x1, wy1, z1}, {x1, wy1, z0}, {x0, wy1, z0}, {0, 1, 0}, color, true);
+						addFace({x0, y1, z1}, {x1, y1, z1}, {x1, y1, z0}, {x0, y1, z0}, {0, 1, 0}, color, true);
 					}
 					
 					// side faces ony where adjacent to air

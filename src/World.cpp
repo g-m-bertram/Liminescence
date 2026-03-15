@@ -48,6 +48,7 @@ World::World() : loadQueue([this](const ChunkCoord& a, const ChunkCoord& b)
 		genThreads.emplace_back(&World::ChunkGenThread, this);
 }
 
+
 World::~World()
 {
 	// stop threads first
@@ -215,6 +216,10 @@ void World::Draw(Camera3D& camera)
 
 	int wCamPosLoc = GetShaderLocation(waterShader, "cameraPosition");
 	SetShaderValue(waterShader, wCamPosLoc, &playerPos, SHADER_UNIFORM_VEC3);
+
+	float time = (float)GetTime();
+	int timeLoc = GetShaderLocation(waterShader, "time");
+	SetShaderValue(waterShader, timeLoc, &time, SHADER_UNIFORM_FLOAT);
 
 	std::vector<std::pair<float, ChunkCoord>> waterChunks;
 

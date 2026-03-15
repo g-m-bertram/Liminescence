@@ -6,6 +6,7 @@ in vec4 vertexColor;
 
 uniform mat4 mvp;
 uniform mat4 matModel;
+uniform float time;
 
 out vec3 fragPosition;
 out vec3 fragNormal;
@@ -13,8 +14,11 @@ out vec4 fragColor;
 
 void main()
 {
-	fragPosition = vec3(matModel * vec4(vertexPosition, 1.0));
+	vec3 pos = vertexPosition;
+	pos.y += sin(pos.x * 0.5 + time) * 0.04 + sin(pos.z * 0.5 + time * 0.7) * 0.04;
+	
+	fragPosition = vec3(matModel * vec4(pos, 1.0));
 	fragNormal = vertexNormal;
 	fragColor = vertexColor;
-	gl_Position = mvp * vec4(vertexPosition, 1.0);
+	gl_Position = mvp * vec4(pos, 1.0);
 }
