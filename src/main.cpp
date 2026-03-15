@@ -55,7 +55,7 @@ int main()
             DrawText("WASD to move, mouse to look", 10, 10, 20, BLACK);
             DrawText(TextFormat("FPS: %d", GetFPS()), 10, 40, 20, BLACK);
             DrawText(TextFormat("Chunks: %d", (int)world.chunks.size()), 10, 70, 20, BLACK);
-            DrawText(TextFormat("y = %d", (int)player.camera.position.y), 10, 100, 20, BLACK);
+            DrawText(TextFormat("x = %d, y = %d, z = %d", (int)player.camera.position.x, (int)player.camera.position.y, (int)player.camera.position.z), 10, 100, 20, BLACK);
 
             EndDrawing();
         }

@@ -6,7 +6,7 @@
 
 const int MAX_HEIGHT = 40;
 const int MIN_HEIGHT = 8;
-const int SEA_LEVEL = 16;
+const int SEA_LEVEL = 24;
 
 
 Chunk::Chunk()
@@ -14,6 +14,7 @@ Chunk::Chunk()
 	meshDirty = true;
 	meshReady = false;
 	memset(&mesh, 0, sizeof(Mesh));
+	memset(&waterMesh, 0, sizeof(Mesh));
 
 	// initialize all blocks to air
 	for (int x = 0; x < CHUNK_WIDTH; x++)
@@ -34,21 +35,26 @@ bool Chunk::IsAir(int x, int y, int z, const ChunkNeighborData& neighbors)
 	if (x >= 0 && x < CHUNK_WIDTH &&
 		y >= 0 && y < CHUNK_HEIGHT &&
 		z >= 0 && z < CHUNK_DEPTH)
-		return blocks[x][y][z] == 0;
+		return blocks[x][y][z] == BLOCK_AIR;
 
 	// out of bounds - query world
 	if (y < 0)				{ return false; }
 	if (y >= CHUNK_HEIGHT)	{ return true; }
 
 	// out of bounds - check neighbor snapshot
-	if (x < 0 && neighbors.hasLeft)
+	if (x < 0 && neighbors.hasLeft && z >= 0 && z < CHUNK_DEPTH)
 		return neighbors.left[y][z] == BLOCK_AIR;
-	if (x >= CHUNK_WIDTH && neighbors.hasRight)
+	if (x >= CHUNK_WIDTH && neighbors.hasRight && z >= 0 && z < CHUNK_DEPTH)
 		return neighbors.right[y][z] == BLOCK_AIR;
-	if (z < 0 && neighbors.hasBack)
+	if (z < 0 && neighbors.hasBack && x >= 0 && x < CHUNK_WIDTH)
 		return neighbors.back[x][y] == BLOCK_AIR;
-	if (z >= CHUNK_DEPTH && neighbors.hasFront)
+	if (z >= CHUNK_DEPTH && neighbors.hasFront && x >= 0 && x < CHUNK_WIDTH)
 		return neighbors.front[x][y] == BLOCK_AIR;
+
+	if (x < 0 && !neighbors.hasLeft)			{ return false; }
+	if (x >= CHUNK_WIDTH && !neighbors.hasRight){ return false; }
+	if (z < 0 && !neighbors.hasBack)			{ return false; }
+	if (z >= CHUNK_DEPTH && !neighbors.hasFront){ return false; }
 
 	return true;
 }
@@ -108,41 +114,52 @@ void Chunk::BuildMesh()
 
 void Chunk::BuildMeshData(const ChunkNeighborData& neighbors)
 {
-	std::vector<float> vertices;
+	std::vector<float> vertices; // solids
 	std::vector<float> normals;
 	std::vector<unsigned char> colors;
 	std::vector<unsigned short> indices;
-
 	unsigned short index = 0;
 
+	std::vector<float> wVertices; // water
+	std::vector<float> wNormals;
+	std::vector<unsigned char> wColors;
+	std::vector<unsigned short> wIndices;
+	unsigned short wIndex = 0;
+
 	auto addFace = [&]
-	(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal, Color color)
+	(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal, Color color, bool water)
 		{
+			auto& v = water ? wVertices : vertices;
+			auto& n = water ? wNormals : normals;
+			auto& co = water ? wColors : colors;
+			auto& ind = water ? wIndices : indices;
+			unsigned short& idx = water ? wIndex : index;
+
 			// triangle 1
-			vertices.insert(vertices.end(), { a.x, a.y, a.z });
-			vertices.insert(vertices.end(), { b.x, b.y, b.z });
-			vertices.insert(vertices.end(), { c.x, c.y, c.z });
+			v.insert(v.end(), { a.x, a.y, a.z });
+			v.insert(v.end(), { b.x, b.y, b.z });
+			v.insert(v.end(), { c.x, c.y, c.z });
 			// triangle 2
-			vertices.insert(vertices.end(), { a.x, a.y, a.z });
-			vertices.insert(vertices.end(), { c.x, c.y, c.z });
-			vertices.insert(vertices.end(), { d.x, d.y, d.z });
+			v.insert(v.end(), { a.x, a.y, a.z });
+			v.insert(v.end(), { c.x, c.y, c.z });
+			v.insert(v.end(), { d.x, d.y, d.z });
 
 			for (int i = 0; i < 6; i++) // find normals of each face
 			{
-				normals.insert(normals.end(), { normal.x, normal.y, normal.z });
-				colors.insert(colors.end(), { color.r, color.g, color.b, color.a });
+				n.insert(n.end(), { normal.x, normal.y, normal.z });
+				co.insert(co.end(), { color.r, color.g, color.b, color.a });
 			}
 
-			indices.insert
-			(indices.end(),
-				{ index,
-				(unsigned short)(index + 1),
-				(unsigned short)(index + 2),
-				(unsigned short)(index + 3),
-				(unsigned short)(index + 4),
-				(unsigned short)(index + 5) }
+			ind.insert
+			(ind.end(),
+				{ idx,
+				(unsigned short)(idx + 1),
+				(unsigned short)(idx + 2),
+				(unsigned short)(idx + 3),
+				(unsigned short)(idx + 4),
+				(unsigned short)(idx + 5) }
 			);
-			index += 6;
+			idx += 6;
 		};
 
 	for (int x = 0; x < CHUNK_WIDTH; x++)
@@ -159,24 +176,72 @@ void Chunk::BuildMeshData(const ChunkNeighborData& neighbors)
 				float y0 = y, y1 = y + 1;
 				float z0 = z, z1 = z + 1;
 
-				// top
-				if (IsAir(x, y + 1, z, neighbors))
-					addFace({ x0, y1, z1 }, { x1, y1, z1 }, { x1, y1, z0 }, { x0, y1, z0 }, { 0, 1, 0 }, color);
-				// bottom
-				if (IsAir(x, y - 1, z, neighbors))
-					addFace({ x0, y0, z0 }, { x1, y0, z0 }, { x1, y0, z1 }, { x0, y0, z1 }, { 0, -1, 0 }, color);
-				// front
-				if (IsAir(x, y, z + 1, neighbors))
-					addFace({ x0, y0, z1 }, { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 }, { 0, 0, 1 }, color);
-				// back
-				if (IsAir(x, y, z - 1, neighbors))
-					addFace({ x1, y0, z0 }, { x0, y0, z0 }, { x0, y1, z0 }, { x1, y1, z0 }, { 0, 0, -1 }, color);
-				// right
-				if (IsAir(x + 1, y, z, neighbors))
-					addFace({ x1, y0, z1 }, { x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { 1, 0, 0 }, color);
-				// left
-				if (IsAir(x - 1, y, z, neighbors))
-					addFace({ x0, y0, z0 }, { x0, y0, z1 }, { x0, y1, z1 }, { x0, y1, z0 }, { -1, 0, 0 }, color);
+				bool isWater = blocks[x][y][z] == BLOCK_WATER;
+
+				auto IsAirForSolid = [&](int x, int y, int z) -> bool
+				{
+					if (x >= 0 && x < CHUNK_WIDTH &&
+						y >= 0 && y < CHUNK_HEIGHT &&
+						z >= 0 && z < CHUNK_DEPTH)
+						{ return blocks[x][y][z] == BLOCK_AIR || blocks[x][y][z] == BLOCK_WATER; }
+
+					if (y < 0) { return false; }
+					if (y >= CHUNK_HEIGHT) { return true; }
+
+					if (x < 0 && neighbors.hasLeft && z >= 0 && z < CHUNK_DEPTH)
+						return neighbors.left[y][z] == BLOCK_AIR || neighbors.left[y][z] == BLOCK_WATER;
+					if (x >= CHUNK_WIDTH && neighbors.hasRight && z >= 0 && z < CHUNK_DEPTH)
+						return neighbors.right[y][z] == BLOCK_AIR || neighbors.right[y][z] == BLOCK_WATER;
+					if (z < 0 && neighbors.hasBack && x >= 0 && x < CHUNK_WIDTH)
+						return neighbors.back[x][y] == BLOCK_AIR || neighbors.back[x][y] == BLOCK_WATER;
+					if (z >= CHUNK_DEPTH && neighbors.hasFront && x >= 0 && x < CHUNK_WIDTH)
+						return neighbors.front[x][y] == BLOCK_AIR || neighbors.front[x][y] == BLOCK_WATER;
+
+					return true;
+				};
+
+				if (isWater)
+				{
+					Color sideColor = { 20, 80, 160, 255 };
+
+					if (IsAir(x, y + 1, z, neighbors))
+					{
+						float wy1 = y1 - 0.1f;
+						addFace({x0, wy1, z1}, {x1, wy1, z1}, {x1, wy1, z0}, {x0, wy1, z0}, {0, 1, 0}, color, true);
+					}
+					
+					// side faces ony where adjacent to air
+					if (IsAir(x, y, z + 1, neighbors))
+						addFace({ x0, y0, z1 }, { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 }, { 0, 0, 1 }, sideColor, false);
+					if (IsAir(x, y, z - 1, neighbors))
+						addFace({ x1, y0, z0 }, { x0, y0, z0 }, { x0, y1, z0 }, { x1, y1, z0 }, { 0, 0, -1 }, sideColor, false);
+					if (IsAir(x + 1, y, z, neighbors))
+						addFace({ x1, y0, z1 }, { x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { 1, 0, 0 }, sideColor, false);
+					if (IsAir(x - 1, y, z, neighbors))
+						addFace({ x0, y0, z0 }, { x0, y0, z1 }, { x0, y1, z1 }, { x0, y1, z0 }, { -1, 0, 0 }, sideColor, false);
+				}
+				else
+				{
+					// top
+					if (IsAirForSolid(x, y + 1, z))
+						addFace({ x0, y1, z1 }, { x1, y1, z1 }, { x1, y1, z0 }, { x0, y1, z0 }, { 0, 1, 0 }, color, isWater);
+					// bottom
+					if (IsAirForSolid(x, y - 1, z))
+						addFace({ x0, y0, z0 }, { x1, y0, z0 }, { x1, y0, z1 }, { x0, y0, z1 }, { 0, -1, 0 }, color, isWater);
+					// front
+					if (IsAirForSolid(x, y, z + 1))
+						addFace({ x0, y0, z1 }, { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 }, { 0, 0, 1 }, color, isWater);
+					// back
+					if (IsAirForSolid(x, y, z - 1))
+						addFace({ x1, y0, z0 }, { x0, y0, z0 }, { x0, y1, z0 }, { x1, y1, z0 }, { 0, 0, -1 }, color, isWater);
+					// right
+					if (IsAirForSolid(x + 1, y, z))
+						addFace({ x1, y0, z1 }, { x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { 1, 0, 0 }, color, isWater);
+					// left
+					if (IsAirForSolid(x - 1, y, z))
+						addFace({ x0, y0, z0 }, { x0, y0, z1 }, { x0, y1, z1 }, { x0, y1, z0 }, { -1, 0, 0 }, color, isWater);
+				}
+
 			}
 		}
 	}
@@ -184,28 +249,49 @@ void Chunk::BuildMeshData(const ChunkNeighborData& neighbors)
 	if (indices.size() > 60000)
 		TraceLog(LOG_WARNING, "Chunk at high index count: %d indices", (int)indices.size());
 
+	// build solid mesh
 	if (meshReady && mesh.vboId != nullptr) { UnloadMesh(mesh); }
 
 	mesh = {};
 	mesh.triangleCount = vertices.size() / 9;
 	mesh.vertexCount = vertices.size() / 3;
 
-	mesh.vertices = (float*)MemAlloc(vertices.size() * sizeof(float));
-	mesh.normals = (float*)MemAlloc(normals.size() * sizeof(float));
-	mesh.colors = (unsigned char*)MemAlloc(colors.size() * sizeof(unsigned char));
-	mesh.indices = (unsigned short*)MemAlloc(indices.size() * sizeof(unsigned short));
+	mesh.vertices = (float*)MemAlloc(			vertices.size() * sizeof(float));
+	mesh.normals =	(float*)MemAlloc(			normals.size() * sizeof(float));
+	mesh.colors =	(unsigned char*)MemAlloc(	colors.size() * sizeof(unsigned char));
+	mesh.indices =	(unsigned short*)MemAlloc(	indices.size() * sizeof(unsigned short));
 
-	memcpy(mesh.vertices, vertices.data(), vertices.size() * sizeof(float));
-	memcpy(mesh.normals, normals.data(), normals.size() * sizeof(float));
-	memcpy(mesh.colors, colors.data(), colors.size() * sizeof(unsigned char));
-	memcpy(mesh.indices, indices.data(), indices.size() * sizeof(unsigned short));
+	memcpy(mesh.vertices,	vertices.data(),vertices.size() * sizeof(float));
+	memcpy(mesh.normals,	normals.data(), normals.size() * sizeof(float));
+	memcpy(mesh.colors,		colors.data(),	colors.size() * sizeof(unsigned char));
+	memcpy(mesh.indices,	indices.data(), indices.size() * sizeof(unsigned short));
 
+	// build solid mesh
+	if (meshReady && waterMesh.vboId != nullptr) { UnloadMesh(waterMesh); }
+
+	waterMesh = {};
+	waterMesh.triangleCount = wVertices.size() / 9;
+	waterMesh.vertexCount = wVertices.size() / 3;
+
+	waterMesh.vertices = (float*)MemAlloc(			wVertices.size() * sizeof(float));
+	waterMesh.normals =	(float*)MemAlloc(			wNormals.size() * sizeof(float));
+	waterMesh.colors =	(unsigned char*)MemAlloc(	wColors.size() * sizeof(unsigned char));
+	waterMesh.indices =	(unsigned short*)MemAlloc(	wIndices.size() * sizeof(unsigned short));
+
+	memcpy(waterMesh.vertices,	wVertices.data(),	wVertices.size() * sizeof(float));
+	memcpy(waterMesh.normals,	wNormals.data(),	wNormals.size() * sizeof(float));
+	memcpy(waterMesh.colors,	wColors.data(),		wColors.size() * sizeof(unsigned char));
+	memcpy(waterMesh.indices,	wIndices.data(),	wIndices.size() * sizeof(unsigned short));
+
+	// set flag
 	meshDirty = false;
 }
 
 void Chunk::UploadMeshData()
 {
 	UploadMesh(&mesh, false);
+	if (waterMesh.vertexCount > 0)
+		UploadMesh(&waterMesh, false);
 	meshReady = true;
 }
 
@@ -214,4 +300,15 @@ void Chunk::Draw(Vector3 position, Material& mat)
 	if (!meshReady || mesh.vertexCount == 0) { return; }
 
 	DrawMesh(mesh, mat, MatrixTranslate(position.x, position.y, position.z));
+}
+
+void Chunk::DrawWater(Vector3 position, Material& mat)
+{
+	if (!meshReady 
+		|| waterMesh.vertexCount == 0 
+		|| waterMesh.vboId == nullptr
+		|| waterMesh.vboId[0] == 0) 
+	{ return; }
+
+	DrawMesh(waterMesh, mat, MatrixTranslate(position.x, position.y, position.z));
 }

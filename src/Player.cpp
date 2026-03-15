@@ -3,7 +3,7 @@
 #include<iostream>
 
 // ~~~~~~ PHYSICS CONSTANTS ~~~~~~
-const float GRAVITY = 0.f;
+const float GRAVITY = -20.f;
 const float MOVE_SPEED = 30.f;
 const float JUMP_FORCE = 8.f;
 const float PLAYER_HEIGHT = 1.8f;

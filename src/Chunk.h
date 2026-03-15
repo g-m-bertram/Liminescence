@@ -28,6 +28,7 @@ public:
 	uint8_t blocks[CHUNK_WIDTH][CHUNK_HEIGHT][CHUNK_DEPTH];
 
 	Mesh mesh;
+	Mesh waterMesh;
 	bool meshReady;
 	bool meshDirty;
 
@@ -37,6 +38,7 @@ public:
 	void BuildMeshData(const ChunkNeighborData& neighbors);	// safe to call on background thread
 	void UploadMeshData();	// must be called on main thread
 	void Draw(Vector3 position, Material& mat);
+	void DrawWater(Vector3 position, Material& mat);
 
 private:
 	bool IsAir(int x, int y, int z, const ChunkNeighborData& neighbors);

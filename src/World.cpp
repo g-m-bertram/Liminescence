@@ -1,6 +1,7 @@
 #include"World.h"
 #include<cmath>
-
+#include"rlgl.h"
+#include<algorithm>
 
 World::World() : loadQueue([this](const ChunkCoord& a, const ChunkCoord& b)
 	{
@@ -13,8 +14,8 @@ World::World() : loadQueue([this](const ChunkCoord& a, const ChunkCoord& b)
 {
 	playerPos = { 0,0,0 };
 	running = true;
-	chunkMaterial = LoadMaterialDefault();
-	// shader initialization
+	
+	// chunk shader initialization
 	fogShader = LoadShader("assets/shaders/chunk.vs", "assets/shaders/chunk.fs");
 	int fogColorLoc =	GetShaderLocation(fogShader, "fogColor");
 	int fogStartLoc =	GetShaderLocation(fogShader, "fogStart");
@@ -25,7 +26,20 @@ World::World() : loadQueue([this](const ChunkCoord& a, const ChunkCoord& b)
 	SetShaderValue(fogShader, fogColorLoc,	fogColor,	SHADER_UNIFORM_VEC4);
 	SetShaderValue(fogShader, fogStartLoc,	&fogStart,	SHADER_UNIFORM_FLOAT);
 	SetShaderValue(fogShader, fogEndLoc,	&fogEnd,	SHADER_UNIFORM_FLOAT);
+	chunkMaterial = LoadMaterialDefault();
 	chunkMaterial.shader = fogShader;
+
+	// water shader initialization
+	waterShader = LoadShader("assets/shaders/water.vs", "assets/shaders/water.fs");
+	int wFogColorLoc =	GetShaderLocation(waterShader, "fogColor");
+	int wFogStartLoc =	GetShaderLocation(waterShader, "fogStart");
+	int wFogEndLoc =	GetShaderLocation(waterShader, "fogEnd");
+	SetShaderValue(waterShader, wFogColorLoc,	fogColor,	SHADER_UNIFORM_VEC4);
+	SetShaderValue(waterShader, wFogStartLoc,	&fogStart,	SHADER_UNIFORM_FLOAT);
+	SetShaderValue(waterShader, wFogEndLoc,		&fogEnd,	SHADER_UNIFORM_FLOAT);
+	waterMaterial = LoadMaterialDefault();
+	waterMaterial.shader = waterShader;
+
 
 	int threadCount = 1;
 	//int threadCount = std::thread::hardware_concurrency();
@@ -50,6 +64,7 @@ World::~World()
 
 	// unload gpu resources
 	UnloadMaterial(chunkMaterial);
+	UnloadMaterial(waterMaterial);
 
 	// clear chunks
 	{
@@ -198,17 +213,60 @@ void World::Draw(Camera3D& camera)
 	int camPosLoc = GetShaderLocation(fogShader, "cameraPosition");
 	SetShaderValue(fogShader, camPosLoc, &playerPos, SHADER_UNIFORM_VEC3);
 
-	std::lock_guard<std::mutex> lock(chunksMutex);
-	for (auto& pair : chunks)
+	int wCamPosLoc = GetShaderLocation(waterShader, "cameraPosition");
+	SetShaderValue(waterShader, wCamPosLoc, &playerPos, SHADER_UNIFORM_VEC3);
+
+	std::vector<std::pair<float, ChunkCoord>> waterChunks;
+
 	{
-		if (!IsChunkVisible(pair.first.x, pair.first.z, camera)) { continue; }
-		pair.second->Draw({
-			(float)(pair.first.x * CHUNK_WIDTH),
-			0.0f,
-			(float)(pair.first.z * CHUNK_DEPTH)
-			},
-			chunkMaterial);
+		std::lock_guard<std::mutex> lock(chunksMutex);
+		
+		// draw solid chunks first
+		for (auto& pair : chunks)
+		{
+			if (!IsChunkVisible(pair.first.x, pair.first.z, camera)) { continue; }
+			pair.second->Draw({
+				(float)(pair.first.x * CHUNK_WIDTH),
+				0.0f,
+				(float)(pair.first.z * CHUNK_DEPTH)
+				},
+				chunkMaterial);
+		}
+
+		// collect water chunks while holding lock
+		for (auto& pair : chunks)
+		{
+			if (!IsChunkVisible(pair.first.x, pair.first.z, camera)) { continue; }
+			float dx = pair.first.x * CHUNK_WIDTH - playerPos.x;
+			float dz = pair.first.z * CHUNK_DEPTH - playerPos.z;
+			waterChunks.push_back({ dx * dx + dz * dz, pair.first });
+		}
 	}
+
+	// sort and draw water outside lock
+	std::sort(waterChunks.begin(), waterChunks.end(),
+		[](auto& a, auto& b) {return a.first > b.first; });
+
+	// draw water with blending
+	BeginBlendMode(BLEND_ALPHA);
+	rlDisableDepthMask(); // prevents water from blocking solid geometry behind it
+
+	{
+		std::lock_guard<std::mutex> lock(chunksMutex);
+		for (auto& [dist, coord] : waterChunks)
+		{
+			auto it = chunks.find(coord);
+			if (it == chunks.end()) { continue; }
+			it->second->DrawWater(
+				{ (float)(coord.x * CHUNK_WIDTH),
+				0.0f,
+				(float)(coord.z * CHUNK_DEPTH)},
+				waterMaterial);
+		}
+	}
+
+	rlEnableDepthMask();
+	EndBlendMode();
 }
 
 uint8_t World::GetBlock(int x, int y, int z)

@@ -7,7 +7,6 @@
 #include<queue>
 #include<functional>
 #include"Chunk.h"
-
 /*
 mutex is a synchronization primitive in C++ used to protect shared data 
 from being simultaneously accessed by multiple threads. It ensures 
@@ -71,12 +70,14 @@ public:
 private:
 	Vector3 playerPos;
 	Shader fogShader;
+	Shader waterShader;
 
 	void LoadChunk(int cx, int cz);
 	void UnloadChunk(int cx, int cz);
 	void ChunkGenThread();
 
 	Material chunkMaterial;
+	Material waterMaterial;
 
 	std::vector<std::thread> genThreads;
 	std::mutex chunksMutex;
